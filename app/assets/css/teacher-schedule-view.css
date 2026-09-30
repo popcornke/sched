@@ -225,13 +225,28 @@ body.bcp-teacher-schedule-page {
 .bcp-teacher-map__sectionhead { margin-bottom: 20px; }
 .bcp-teacher-map__sectionhead h2 { margin: 0; }
 
+/* ------------------------------------------------------------
+   FOOLPROOF RESPONSIVE FILTERS & INPUTS
+   ------------------------------------------------------------ */
 .bcp-teacher-map__filters {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px 20px;
     align-items: flex-end;
     width: 100%;
+    max-width: 100%;
 }
+
+.bcp-custom-select-field,
+.bcp-teacher-search-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0; /* Pinipigilan ang blowout */
+    box-sizing: border-box;
+}
+
 .bcp-teacher-map__filters label {
     font-size: 11px;
     font-weight: 700;
@@ -241,14 +256,11 @@ body.bcp-teacher-schedule-page {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.bcp-teacher-search-wrapper {
-    position: relative;
-    width: 100%;
-    min-width: 0;
-}
+
 .bcp-students-search-box {
     position: relative;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
 }
 .bcp-students-search-box i {
@@ -259,9 +271,11 @@ body.bcp-teacher-schedule-page {
     color: #9ba7ba;
     font-size: 14px;
 }
+
 .bcp-teacher-map__filters input {
     display: block;
     width: 100%;
+    max-width: 100%;
     height: 44px;
     padding: 0 16px 0 38px;
     font: inherit;
@@ -272,6 +286,7 @@ body.bcp-teacher-schedule-page {
     border: 1px solid #dae3f0;
     border-radius: 11px;
     transition: all 0.2s ease;
+    box-sizing: border-box; /* Crucial */
 }
 .bcp-teacher-map__filters input:focus {
     outline: none;
@@ -283,11 +298,14 @@ body.bcp-teacher-schedule-page {
 .bcp-custom-select-wrapper {
     position: relative;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
     user-select: none;
+    box-sizing: border-box;
 }
 .bcp-custom-select-trigger {
     width: 100%;
+    max-width: 100%;
     height: 44px;
     padding: 0 16px;
     border: 1px solid #dae3f0;
@@ -302,25 +320,31 @@ body.bcp-teacher-schedule-page {
     justify-content: space-between;
     cursor: pointer;
     transition: all 0.2s ease;
+    box-sizing: border-box;
 }
+
+/* Force Text Ellipsis Constraint */
 .bcp-custom-select-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     padding-right: 12px;
+    flex: 1 1 0%; /* Pinapayagan lumiit nang sobra */
+    min-width: 0; /* Crucial sa flex children */
+    display: block;
+    text-align: left;
 }
+
 .bcp-custom-select-arrow {
     color: #647b9e;
     font-size: 12px;
     transition: transform 0.2s ease;
+    flex-shrink: 0;
 }
 .bcp-custom-select-trigger.is-active .bcp-custom-select-arrow {
     transform: rotate(180deg);
 }
-.bcp-custom-select-trigger:hover {
-    border-color: #cbd5e1;
-    background-color: #fff;
-}
+.bcp-custom-select-trigger:hover { border-color: #cbd5e1; background-color: #fff; }
 .bcp-custom-select-trigger.is-active {
     background-color: #fff;
     border-color: var(--tm-blue);
@@ -361,9 +385,8 @@ body.bcp-teacher-schedule-page {
     cursor: pointer;
     transition: background 0.15s;
     border-bottom: 1px solid #f4f7fb;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal; /* Para mabasa lahat kapag naka-open ang dropdown */
+    word-wrap: break-word;
 }
 .bcp-custom-select-option:last-child { border-bottom: none; }
 .bcp-custom-select-option:hover { background: #f4f7fb; color: #1a3a8c; }
@@ -396,6 +419,9 @@ body.bcp-teacher-schedule-page {
 .bcp-autocomplete-item:last-child { border-bottom: none; }
 .bcp-autocomplete-item:hover { background: #f4f7fb; color: #1a3a8c; font-weight: 600; }
 
+/* ------------------------------------------------------------
+   STATUS, STATS & TABLES
+   ------------------------------------------------------------ */
 .bcp-teacher-map__status {
     background: #f8fafc;
     border: 1px solid var(--tm-border);
@@ -557,6 +583,9 @@ body.bcp-teacher-schedule-page {
     100% { opacity: 1; transform: translateY(0); }
 }
 
+/* ------------------------------------------------------------
+   FOOLPROOF MOBILE RESPONSIVENESS FIX
+   ------------------------------------------------------------ */
 @media (max-width: 1080px) {
     .bcp-teacher-map__filters, .bcp-teacher-map__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .bcp-teacher-map__daily { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -564,13 +593,25 @@ body.bcp-teacher-schedule-page {
 @media (max-width: 1024px) {
     .bcp-teacher-map__split { grid-template-columns: 1fr; }
 }
+
+/* DITO PINATAY ANG GRID KAPAG MOBILE PARA WALANG BLOWOUT */
 @media (max-width: 768px) {
-    .bcp-teacher-map__filters { grid-template-columns: 1fr; }
+    .bcp-teacher-map__filters { 
+        display: flex !important; 
+        flex-direction: column !important; 
+        align-items: stretch !important; 
+        width: 100%; 
+    }
 }
 @media (max-width: 650px) {
     .bcp-teacher-map { padding: 24px 16px; }
     .bcp-teacher-map__panel { padding: 16px; }
-    .bcp-teacher-map__filters, .bcp-teacher-map__stats, .bcp-teacher-map__daily { grid-template-columns: 1fr; }
+    .bcp-teacher-map__stats, .bcp-teacher-map__daily { 
+        display: flex; 
+        flex-direction: column; 
+        align-items: stretch; 
+        width: 100%; 
+    }
     .bcp-teacher-map__table { min-width: 540px; }
     .bcp-teacher-map__split .bcp-teacher-map__table { min-width: 100%; }
     .bcp-teacher-map__header { flex-direction: column; align-items: flex-start; gap: 14px; }

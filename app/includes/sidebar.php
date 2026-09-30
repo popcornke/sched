@@ -530,7 +530,7 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         <!-- =====================================================
              LOGOUT
              ===================================================== -->
-        <form method="POST" action="/logout.php" class="sidebar-logout-form">
+        <form method="POST" action="/sched/logout.php" class="sidebar-logout-form">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('authCsrf') ? authCsrf() : '', ENT_QUOTES, 'UTF-8') ?>">
             <button type="submit" class="sidebar-logout">
                 <i class="fa-solid fa-right-from-bracket"></i>
@@ -897,7 +897,11 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
 
         function render() {
             list.replaceChildren();
-            empty.hidden = notifications.length > 0;
+
+            const hasNotifications = notifications.length > 0;
+            list.hidden = !hasNotifications;
+            empty.hidden = hasNotifications;
+
             notifications.forEach(item => list.appendChild(createNotificationRow(item)));
             updateBadge();
         }
@@ -974,6 +978,9 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         }
 
         function openPanel() {
+            // Always open the dropdown, even when there are zero notifications.
+            // Render first so the empty state is immediately visible while the DB refresh runs.
+            render();
             positionPanel();
             panel.hidden = false;
             bell.setAttribute('aria-expanded', 'true');

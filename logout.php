@@ -21,6 +21,8 @@ if (!authCsrfValid($_POST['csrf_token'] ?? null)) {
 authClear();
 
 header('Clear-Site-Data: "cache"');
-header('Location: /index.php', true, 303);
+
+// After a successful logout, always return to the sched landing page.
+header('Location: /sched/index.php', true, 303);
 
 exit;

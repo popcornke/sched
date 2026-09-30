@@ -8,9 +8,76 @@ try {
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
         exGuard('GET');
         $pdo = getDatabase();
-        $periods = exRows($pdo, "SELECT academic_period_id,academic_year,semester FROM academic_periods WHERE period_status='DEMO' ORDER BY academic_period_id DESC");
-        $programs = exRows($pdo, "SELECT program_code,program_name FROM programs WHERE is_active=1 AND education_level='College' ORDER BY program_code");
-        exReply(200, ['success' => true, 'status' => 'EXAM_CATALOG_READY', 'periods' => $periods, 'programs' => $programs, 'database_write' => false]);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        $periods = exRows($pdo, "SELECT academic_period_id,academic_year,semester
+            FROM academic_periods
+            WHERE period_status='DEMO'
+            ORDER BY academic_period_id DESC");
+
+        $periodId = filter_var($_GET['period_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (($_GET['period_id'] ?? null) !== null && !$periodId) {
+            exFail(400, 'INVALID_PERIOD', 'Choose a valid academic period.');
+        }
+
+        if ($periodId) {
+            $validPeriod = exRows($pdo, "SELECT academic_period_id
+                FROM academic_periods
+                WHERE academic_period_id=:period AND period_status='DEMO'
+                LIMIT 1", ['period' => (int)$periodId]);
+            if (count($validPeriod) !== 1) exFail(404, 'ACADEMIC_PERIOD_NOT_FOUND', 'Selected DEMO academic period was not found.');
+
+            $programs = exRows($pdo, "SELECT
+                    p.program_id,
+                    p.program_code,
+                    p.program_name,
+                    p.education_level,
+                    COUNT(sb.batch_id) AS active_class_batch_count,
+                    MAX(sb.batch_id) AS class_batch_id
+                FROM programs p
+                LEFT JOIN schedule_batches sb
+                    ON sb.program_id=p.program_id
+                   AND sb.academic_period_id=:period
+                   AND sb.status='ACTIVE'
+                   AND sb.data_origin='DEMO'
+                WHERE p.is_active=1
+                GROUP BY p.program_id,p.program_code,p.program_name,p.education_level
+                ORDER BY p.education_level,p.program_code", ['period' => (int)$periodId]);
+
+            foreach ($programs as &$program) {
+                $count = (int)$program['active_class_batch_count'];
+                $program['program_id'] = (int)$program['program_id'];
+                $program['active_class_batch_count'] = $count;
+                $program['class_batch_id'] = $count === 1 ? (int)$program['class_batch_id'] : null;
+                $program['has_timetable'] = $count === 1;
+                $program['timetable_status'] = $count === 0
+                    ? 'NO_TIMETABLE'
+                    : ($count === 1 ? 'READY' : 'MULTIPLE_ACTIVE_TIMETABLES');
+            }
+            unset($program);
+        } else {
+            $programs = exRows($pdo, "SELECT program_id,program_code,program_name,education_level
+                FROM programs
+                WHERE is_active=1
+                ORDER BY education_level,program_code");
+            foreach ($programs as &$program) {
+                $program['program_id'] = (int)$program['program_id'];
+                $program['active_class_batch_count'] = null;
+                $program['class_batch_id'] = null;
+                $program['has_timetable'] = null;
+                $program['timetable_status'] = 'UNKNOWN';
+            }
+            unset($program);
+        }
+
+        exReply(200, [
+            'success' => true,
+            'status' => 'EXAM_CATALOG_READY',
+            'selected_period_id' => $periodId ? (int)$periodId : null,
+            'periods' => $periods,
+            'programs' => $programs,
+            'database_write' => false
+        ]);
     }
     exGuard('POST');
     set_time_limit(155);

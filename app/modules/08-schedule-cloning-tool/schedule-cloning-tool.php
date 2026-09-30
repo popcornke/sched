@@ -2139,16 +2139,42 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     },
                     {
                         label:
-                            'Room',
+                            'Students',
                         render:
                             row =>
-                                row.room_name
-                                || (
+                                row.target_student_count === null
+                                ? '—'
+                                : (
+                                    row.source_student_count
+                                    + ' → '
+                                    + row.target_student_count
+                                )
+                    },
+                    {
+                        label:
+                            'Room',
+                        render:
+                            row => {
+                                if (
                                     row.delivery_mode
                                     === 'ONLINE'
-                                    ? 'No room'
-                                    : '—'
-                                )
+                                ) {
+                                    return 'No room';
+                                }
+
+                                if (!row.room_name) {
+                                    return '—';
+                                }
+
+                                return row.room_capacity === null
+                                    ? row.room_name
+                                    : (
+                                        row.room_name
+                                        + ' (cap '
+                                        + row.room_capacity
+                                        + ')'
+                                    );
+                            }
                     },
                     {
                         label:

@@ -232,7 +232,20 @@ if(hamburgerBtn && sidebar) {
 }
 
 const el=id=>document.getElementById(id);
-let state={period:null,program:null,date:el('subDate').value,meetings:[],history:[],csrf:'',selected:null,loading:false,nonce:0};
+let state={
+    period:null,
+    program:null,
+    date:el('subDate').value,
+    meetings:[],
+    history:[],
+    csrf:'',
+    selected:null,
+    loading:false,
+    nonce:0,
+    catalogAbort:null,
+    candidateAbort:null,
+    candidateCache:new Map()
+};
 
 /* --- PREMIUM CUSTOM SELECT DROPDOWN LOGIC --- */
 function upgradeSelects() {
@@ -279,9 +292,16 @@ function upgradeSelects() {
                 
                 item.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    selectElem.value = opt.value;
-                    selectElem.dispatchEvent(new Event('change'));
+                    const nextValue = String(opt.value);
+                    const changed = String(selectElem.value) !== nextValue;
+                    selectElem.value = nextValue;
+                    sync();
                     closeAllCustomSelects();
+
+                    // Only a real USER selection change should reload data.
+                    if (changed) {
+                        selectElem.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                 });
                 optionsList.appendChild(item);
             });
@@ -331,11 +351,30 @@ const node=(tag,txt,cls)=>{const n=document.createElement(tag);if(cls)n.classNam
 const fmt=time=>{const [h,m]=String(time).split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`;};
 const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
-async function api(method,params){const url=new URL('./substitute-api.php',window.location.href);
- if(method==='GET'){for(const [k,v] of Object.entries(params))if(v!==null&&v!==undefined&&v!=='')url.searchParams.set(k,v);}
- const r=await fetch(url,{method,credentials:'same-origin',cache:'no-store',headers:method==='POST'?{'Content-Type':'application/json'}:{},body:method==='POST'?JSON.stringify(params):undefined});
- let data;try{data=await r.json();}catch{throw Error('API returned invalid JSON. Check the PHP error log.');}
- if(!r.ok||!data.success)throw Error(data.message||data.status||'Request failed.');return data;}
+async function api(method,params,signal=null){
+ const url=new URL('./substitute-api.php',window.location.href);
+ if(method==='GET'){
+  for(const [k,v] of Object.entries(params)){
+   if(v!==null&&v!==undefined&&v!=='') url.searchParams.set(k,v);
+  }
+ }
+ const r=await fetch(url,{
+  method,
+  credentials:'same-origin',
+  cache:'no-store',
+  signal,
+  headers:method==='POST'?{'Content-Type':'application/json'}:{},
+  body:method==='POST'?JSON.stringify(params):undefined
+ });
+ let data;
+ try{data=await r.json();}
+ catch{
+  if(signal?.aborted) throw new DOMException('Request aborted','AbortError');
+  throw Error('API returned invalid JSON. Check the PHP error log.');
+ }
+ if(!r.ok||!data.success) throw Error(data.message||data.status||'Request failed.');
+ return data;
+}
  
 function options(select,rows,valueField,textField,selected){
     select.replaceChildren();
@@ -343,23 +382,91 @@ function options(select,rows,valueField,textField,selected){
         const o=new Option(textField(row),row[valueField]);
         select.add(o);
     }
-    if(selected!==undefined&&rows.some(r=>String(r[valueField])===String(selected))) select.value=String(selected);
-    select.dispatchEvent(new Event('change')); 
+
+    if(selected!==undefined && rows.some(r=>String(r[valueField])===String(selected))){
+        select.value=String(selected);
+    } else if(rows.length){
+        select.selectedIndex=0;
+    }
+
+    // Do not fire "change" while merely rendering API data.
+    // The old synthetic change caused recursive load() calls / auto-refresh.
 }
 
-async function load(){const request=++state.nonce;status('Loading saved class meetings…', 'loading');
- const date=el('subDate').value,period=el('subPeriod').value,program=el('subProgram').value;
- try{const data=await api('GET',{action:'catalog',period_id:period,program,date});if(request!==state.nonce)return;
-  state.period=data.selected_period_id;state.program=data.selected_program.program_code;state.date=data.selected_date;
-  state.meetings=data.meetings;state.history=data.history;state.csrf=data.csrf_token;
-  
-  options(el('subPeriod'),data.periods,'academic_period_id',r=>`${r.academic_year} · Semester ${r.semester}`,state.period);
-  options(el('subProgram'),data.programs,'program_code',r=>`${r.program_code} — ${r.program_name}`,state.program);
-  upgradeSelects(); 
-  
-  el('subDate').value=state.date;render();status(`Loaded ${data.meetings.length} classes for ${data.selected_program.program_code} on ${dateLabel(data.selected_date)}.`,'success');
- }catch(e){if(request!==state.nonce)return;state.meetings=[];state.history=[];render();status(e.message,'error');}}
- 
+async function load(){
+ const request=++state.nonce;
+
+ // Cancel the older catalog request instead of letting stale requests keep
+ // repainting the page.
+ state.catalogAbort?.abort();
+ state.catalogAbort=new AbortController();
+
+ const refreshButton=el('subRefresh');
+ refreshButton.disabled=true;
+ refreshButton.setAttribute('aria-busy','true');
+
+ status('Loading saved class meetings…','loading');
+
+ const date=el('subDate').value;
+ const period=el('subPeriod').value;
+ const program=el('subProgram').value;
+
+ try{
+  const data=await api(
+   'GET',
+   {action:'catalog',period_id:period,program,date},
+   state.catalogAbort.signal
+  );
+
+  if(request!==state.nonce) return;
+
+  state.period=data.selected_period_id;
+  state.program=data.selected_program.program_code;
+  state.date=data.selected_date;
+  state.meetings=data.meetings;
+  state.history=data.history;
+  state.csrf=data.csrf_token;
+
+  // Refreshing the page data invalidates old candidate eligibility results.
+  state.candidateCache.clear();
+
+  options(
+   el('subPeriod'),
+   data.periods,
+   'academic_period_id',
+   r=>`${r.academic_year} · Semester ${r.semester}`,
+   state.period
+  );
+  options(
+   el('subProgram'),
+   data.programs,
+   'program_code',
+   r=>`${r.program_code} — ${r.program_name}`,
+   state.program
+  );
+
+  upgradeSelects();
+
+  el('subDate').value=state.date;
+  render();
+  status(
+   `Loaded ${data.meetings.length} classes for ${data.selected_program.program_code} on ${dateLabel(data.selected_date)}.`,
+   'success'
+  );
+ }catch(e){
+  if(e.name==='AbortError' || request!==state.nonce) return;
+  state.meetings=[];
+  state.history=[];
+  render();
+  status(e.message,'error');
+ }finally{
+  if(request===state.nonce){
+   refreshButton.disabled=false;
+   refreshButton.removeAttribute('aria-busy');
+  }
+ }
+}
+
 function render(){const covered=state.meetings.filter(x=>x.substitute_assignment_id!==null).length;
  el('subTotal').textContent=state.meetings.length;el('subCovered').textContent=covered;el('subOriginal').textContent=state.meetings.length-covered;
  el('subDayLabel').textContent=state.date?dateLabel(state.date):'No date selected';renderMeetings();renderHistory();}
@@ -392,17 +499,77 @@ function renderHistory(){const body=el('subHistory');body.replaceChildren();if(!
   const badge=node('span',h.status==='ACTIVE'&&Number(h.source_batch_active)!==1?'HISTORICAL':h.status,'bcp-sub__chip '+(h.status==='ACTIVE'&&Number(h.source_batch_active)===1?'bcp-sub__chip--covered':''));const cell=node('td');cell.append(badge);tr.append(cell);
   const action=node('td');if(h.status==='ACTIVE'&&Number(h.source_batch_active)===1){const b=node('button','Cancel duty','bcp-sub__link-btn');b.type='button';b.addEventListener('click',()=>cancelDuty(h));action.append(b);}else action.textContent=h.cancellation_reason||'—';tr.append(action);body.append(tr);}}
   
-function closeModal(){el('subModal').hidden=true;state.selected=null;el('subReason').value='';el('subCandidate').replaceChildren();el('subCandidate').dispatchEvent(new Event('change'));}
+function closeModal(){
+ state.candidateAbort?.abort();
+ state.candidateAbort=null;
+ el('subModal').hidden=true;
+ state.selected=null;
+ el('subReason').value='';
+ el('subCandidate').replaceChildren();
+ el('subCandidateInfo').textContent='';
+}
 
-async function openMeeting(meeting){state.selected=meeting;el('subModal').hidden=false;el('subSelectedMeeting').textContent=`${state.date} · ${meeting.section_code} · ${meeting.subject_code} · ${fmt(meeting.start_time)}–${fmt(meeting.end_time)} · Original: ${meeting.original_teacher_name}`;
- el('subCandidate').replaceChildren();el('subCandidate').dispatchEvent(new Event('change'));el('subCandidateInfo').innerHTML='<i class="fa-solid fa-circle-notch fa-spin"></i> Checking current faculty qualifications and time conflicts…';el('subConfirm').disabled=true;
- try{const data=await api('GET',{action:'candidates',period_id:state.period,meeting_id:meeting.meeting_id,date:state.date});
-  if(state.selected?.meeting_id!==meeting.meeting_id)return;
-  const list=data.candidates.filter(c=>c.eligible);options(el('subCandidate'),list,'teacher_id',c=>`${c.teacher_name} (${c.employee_no})`);
-  el('subCandidateInfo').textContent=list.length?`${list.length} eligible professor(s). Ineligible faculty are excluded.`:'No eligible faculty found. Check subject authorizations, availability, saved classes and exam duties.';
+async function openMeeting(meeting){
+ // Open the modal immediately; eligibility checks continue inside it.
+ state.selected=meeting;
+ el('subModal').hidden=false;
+ el('subSelectedMeeting').textContent=`${state.date} · ${meeting.section_code} · ${meeting.subject_code} · ${fmt(meeting.start_time)}–${fmt(meeting.end_time)} · Original: ${meeting.original_teacher_name}`;
+
+ const candidateSelect=el('subCandidate');
+ candidateSelect.replaceChildren(new Option('Checking eligible professors…',''));
+ candidateSelect.disabled=true;
+ el('subCandidateInfo').innerHTML='<i class="fa-solid fa-circle-notch fa-spin"></i> Checking current faculty qualifications and time conflicts…';
+ el('subConfirm').disabled=true;
+
+ // Give the browser one paint frame so the dialog appears instantly.
+ await new Promise(resolve=>requestAnimationFrame(resolve));
+
+ const cacheKey=`${state.period}|${meeting.meeting_id}|${state.date}`;
+ let data=state.candidateCache.get(cacheKey);
+
+ try{
+  if(!data){
+   state.candidateAbort?.abort();
+   state.candidateAbort=new AbortController();
+
+   data=await api(
+    'GET',
+    {action:'candidates',period_id:state.period,meeting_id:meeting.meeting_id,date:state.date},
+    state.candidateAbort.signal
+   );
+   state.candidateCache.set(cacheKey,data);
+  }
+
+  if(state.selected?.meeting_id!==meeting.meeting_id) return;
+
+  const list=data.candidates.filter(c=>c.eligible);
+  candidateSelect.disabled=false;
+  options(
+   candidateSelect,
+   list,
+   'teacher_id',
+   c=>`${c.teacher_name} (${c.employee_no})`
+  );
+
+  if(!list.length){
+   candidateSelect.replaceChildren(new Option('No eligible professor available',''));
+   candidateSelect.disabled=true;
+  }
+
+  el('subCandidateInfo').textContent=list.length
+   ? `${list.length} eligible professor(s). Ineligible faculty are excluded.`
+   : 'No eligible faculty found. Check subject authorizations, availability, saved classes and exam duties.';
   el('subConfirm').disabled=list.length===0;
- }catch(e){el('subCandidateInfo').textContent=e.message;el('subConfirm').disabled=true;}}
- 
+ }catch(e){
+  if(e.name==='AbortError') return;
+  if(state.selected?.meeting_id!==meeting.meeting_id) return;
+  candidateSelect.replaceChildren(new Option('Unable to load candidates',''));
+  candidateSelect.disabled=true;
+  el('subCandidateInfo').textContent=e.message;
+  el('subConfirm').disabled=true;
+ }
+}
+
 async function assign(){if(!state.selected||state.loading)return;const t=el('subCandidate').value;
  const reason=el('subReason').value.trim();if(reason.length<5){el('subCandidateInfo').textContent='Please provide a reason (at least five characters).';return;}
  if(!window.confirm('Confirm this one-day DEMO substitute assignment? The original saved timetable will NOT change.'))return;
@@ -417,10 +584,12 @@ async function cancelDuty(h){if(state.loading)return;const reason=window.prompt(
  state.loading=true;try{await api('POST',{action:'cancel',period_id:state.period,substitute_assignment_id:h.substitute_assignment_id,cancellation_reason:reason.trim(),csrf_token:state.csrf});
  await load();status('Substitute duty cancelled. Historical record retained.','success');}catch(e){status(e.message,'error');}finally{state.loading=false;}}
  
-el('subRefresh').addEventListener('click',load);
-el('subPeriod').addEventListener('change',()=>{el('subProgram').replaceChildren();el('subProgram').dispatchEvent(new Event('change'));load();});
-el('subProgram').addEventListener('change',load);
-el('subDate').addEventListener('change',load);
+el('subRefresh').addEventListener('click',()=>load());
+
+// Exactly one user change = exactly one catalog request.
+el('subPeriod').addEventListener('change',()=>load());
+el('subProgram').addEventListener('change',()=>load());
+el('subDate').addEventListener('change',()=>load());
 el('subSearch').addEventListener('input',renderMeetings);
 el('subClose').addEventListener('click',closeModal);
 el('subCancelDialog').addEventListener('click',closeModal);

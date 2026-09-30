@@ -53,9 +53,7 @@ try {
         exReply(422, $output + ['database_write' => false]);
     }
     exValidate($snapshot, $output);
-    session_name('BCP_EXAM_DEMO');
-    session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'path' => '/BCP_SCHEDULING/app/modules/04-exam-timetable-generator']);
-    session_start();
+ 
     $token = bin2hex(random_bytes(32));
     $_SESSION['bcp_exam_preview'] = [
         'token' => $token,

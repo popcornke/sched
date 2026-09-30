@@ -7,9 +7,7 @@ try {
     exGuard('POST');
     $body=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
     if (!is_array($body)||!is_string($body['preview_token']??null)) exFail(400,'PREVIEW_TOKEN_REQUIRED','Generate an exam preview first.');
-    session_name('BCP_EXAM_DEMO');
-    session_set_cookie_params(['httponly'=>true,'samesite'=>'Strict','path'=>'/BCP_SCHEDULING/app/modules/04-exam-timetable-generator']);
-    session_start();
+
     $preview=$_SESSION['bcp_exam_preview']??null;
     if (!is_array($preview) || !hash_equals((string)($preview['token']??''),$body['preview_token'])
         || time()-(int)($preview['created_at']??0)>900) exFail(409,'PREVIEW_MISSING_OR_EXPIRED','Preview expired or does not match this session. Generate a new preview.');

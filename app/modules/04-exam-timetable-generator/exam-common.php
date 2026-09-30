@@ -43,6 +43,203 @@ function exRows(PDO $pdo, string $sql, array $params = []): array
     $st->execute($params);
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
+
+/**
+ * Read the single BCP-wide examination period for one academic period.
+ */
+function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
+{
+    $periodRows = exRows(
+        $pdo,
+        "
+        SELECT
+            academic_period_id,
+            academic_year,
+            semester,
+            period_status
+        FROM academic_periods
+        WHERE academic_period_id = :period
+          AND period_status = 'DEMO'
+        LIMIT 1
+        ",
+        [
+            'period' => $periodId
+        ]
+    );
+
+    if (count($periodRows) !== 1) {
+        exFail(
+            404,
+            'ACADEMIC_PERIOD_NOT_FOUND',
+            'Selected DEMO academic period was not found.'
+        );
+    }
+
+    $calendarRows = exRows(
+        $pdo,
+        "
+        SELECT
+            academic_period_calendar_id,
+            academic_period_id,
+            exam_day_1,
+            exam_day_2,
+            exam_day_3,
+            calendar_status
+        FROM academic_period_calendars
+        WHERE academic_period_id = :period
+        LIMIT 1
+        ",
+        [
+            'period' => $periodId
+        ]
+    );
+
+    $calendarDates = null;
+
+    if ($calendarRows) {
+        $rawDates = [
+            $calendarRows[0]['exam_day_1'],
+            $calendarRows[0]['exam_day_2'],
+            $calendarRows[0]['exam_day_3']
+        ];
+
+        $present = count(
+            array_filter(
+                $rawDates,
+                static fn($value) =>
+                    $value !== null && $value !== ''
+            )
+        );
+
+        /*
+         * Valid states:
+         * 0 dates = not configured yet
+         * 3 dates = complete unified examination period
+         *
+         * 1 or 2 dates means corrupted/incomplete configuration.
+         */
+        if ($present !== 0 && $present !== 3) {
+            exFail(
+                500,
+                'UNIFIED_EXAM_PERIOD_INCOMPLETE',
+                'The academic-period calendar contains only part of the three-day examination period.'
+            );
+        }
+
+        if ($present === 3) {
+            $calendarDates = exDates(
+                array_map('strval', $rawDates)
+            );
+        }
+    }
+
+    /*
+     * Read every ACTIVE exam batch for the same academic period.
+     * Once at least one program has an ACTIVE exam timetable,
+     * the common BCP exam dates become locked.
+     */
+    $activeBatches = exRows(
+        $pdo,
+        "
+        SELECT
+            eb.exam_batch_id,
+            eb.program_id,
+            p.program_code,
+            eb.exam_day_1,
+            eb.exam_day_2,
+            eb.exam_day_3
+        FROM exam_batches eb
+        JOIN programs p
+          ON p.program_id = eb.program_id
+        WHERE eb.academic_period_id = :period
+          AND eb.status = 'ACTIVE'
+        ORDER BY eb.exam_batch_id
+        ",
+        [
+            'period' => $periodId
+        ]
+    );
+
+    $dateSets = [];
+    $activePrograms = [];
+
+    foreach ($activeBatches as $batch) {
+        $dates = exDates([
+            (string)$batch['exam_day_1'],
+            (string)$batch['exam_day_2'],
+            (string)$batch['exam_day_3']
+        ]);
+
+        $key = implode('|', $dates);
+
+        $dateSets[$key] = $dates;
+        $activePrograms[(string)$batch['program_code']] = true;
+    }
+
+    /*
+     * Every ACTIVE program must use exactly the same
+     * three BCP-wide examination dates.
+     */
+    if (count($dateSets) > 1) {
+        exFail(
+            409,
+            'ACTIVE_EXAM_DATES_INCONSISTENT',
+            'ACTIVE exam batches in this academic period do not use one unified three-day examination period.'
+        );
+    }
+
+    $activeDates = $dateSets
+        ? array_values($dateSets)[0]
+        : null;
+
+    /*
+     * The calendar configuration and ACTIVE exam batches
+     * must never disagree.
+     */
+    if (
+        $calendarDates !== null &&
+        $activeDates !== null &&
+        $calendarDates !== $activeDates
+    ) {
+        exFail(
+            409,
+            'UNIFIED_EXAM_DATES_MISMATCH',
+            'The saved academic-period exam dates do not match the ACTIVE exam batches.'
+        );
+    }
+
+    $resolvedDates = $activeDates ?? $calendarDates;
+
+    $locked = count($activeBatches) > 0;
+
+    return [
+        'period' => $periodRows[0],
+
+        'exam_dates' => $resolvedDates,
+
+        'configured' =>
+            $resolvedDates !== null,
+
+        'locked' =>
+            $locked,
+
+        'source' =>
+            $locked
+                ? 'ACTIVE_EXAM_BATCHES'
+                : (
+                    $calendarDates !== null
+                        ? 'ACADEMIC_PERIOD_CALENDAR'
+                        : 'NONE'
+                ),
+
+        'active_exam_batch_count' =>
+            count($activeBatches),
+
+        'active_programs' =>
+            array_keys($activePrograms)
+    ];
+}
+
 function exJsonHash(mixed $value): string
 {
     return hash('sha256', json_encode($value, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR));
@@ -84,74 +281,6 @@ function exDates(array $raw): array
         $last = $v;
     }
     return $result;
-}
-
-/**
- * Return the academic period's single BCP-wide examination window.
- * Source of truth: academic_period_calendars.
- * Lock state is derived from ACTIVE exam batches for the same academic period.
- */
-function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
-{
-    $period = exRows($pdo, "SELECT academic_period_id,academic_year,semester,period_status
-        FROM academic_periods WHERE academic_period_id=:period LIMIT 1", ['period' => $periodId]);
-    if (count($period) !== 1) exFail(404, 'ACADEMIC_PERIOD_NOT_FOUND', 'Selected academic period was not found.');
-
-    $calendar = exRows($pdo, "SELECT academic_period_calendar_id,academic_period_id,
-        DATE_FORMAT(exam_day_1,'%Y-%m-%d') AS exam_day_1,
-        DATE_FORMAT(exam_day_2,'%Y-%m-%d') AS exam_day_2,
-        DATE_FORMAT(exam_day_3,'%Y-%m-%d') AS exam_day_3
-        FROM academic_period_calendars WHERE academic_period_id=:period LIMIT 1", ['period' => $periodId]);
-
-    $active = exRows($pdo, "SELECT eb.exam_batch_id,eb.program_id,p.program_code,
-        DATE_FORMAT(eb.exam_day_1,'%Y-%m-%d') AS exam_day_1,
-        DATE_FORMAT(eb.exam_day_2,'%Y-%m-%d') AS exam_day_2,
-        DATE_FORMAT(eb.exam_day_3,'%Y-%m-%d') AS exam_day_3
-        FROM exam_batches eb JOIN programs p ON p.program_id=eb.program_id
-        WHERE eb.academic_period_id=:period AND eb.status='ACTIVE'
-        ORDER BY p.program_code,eb.exam_batch_id", ['period' => $periodId]);
-
-    $activeDateSets = [];
-    foreach ($active as $row) {
-        $key = implode('|', [$row['exam_day_1'], $row['exam_day_2'], $row['exam_day_3']]);
-        $activeDateSets[$key] = [$row['exam_day_1'], $row['exam_day_2'], $row['exam_day_3']];
-    }
-    if (count($activeDateSets) > 1) {
-        exFail(
-            409,
-            'UNIFIED_EXAM_DATE_CONFLICT',
-            'ACTIVE exam batches already use different examination dates. Resolve those saved batches before generating another program.'
-        );
-    }
-
-    $configured = null;
-    if ($calendar) {
-        $c = $calendar[0];
-        if ($c['exam_day_1'] !== null && $c['exam_day_2'] !== null && $c['exam_day_3'] !== null) {
-            $configured = exDates([$c['exam_day_1'], $c['exam_day_2'], $c['exam_day_3']]);
-        }
-    }
-
-    $legacyActive = $activeDateSets ? array_values($activeDateSets)[0] : null;
-    if ($configured !== null && $legacyActive !== null && $configured !== $legacyActive) {
-        exFail(
-            409,
-            'UNIFIED_EXAM_DATE_CONFLICT',
-            'The academic-period exam dates do not match an ACTIVE saved exam batch. Resolve the mismatch before continuing.'
-        );
-    }
-
-    return [
-        'period' => $period[0],
-        'calendar' => $calendar[0] ?? null,
-        'exam_dates' => $configured ?? $legacyActive,
-        'configured' => $configured !== null || $legacyActive !== null,
-        'locked' => count($active) > 0,
-        'active_exam_batches' => $active,
-        'active_programs' => array_values(array_unique(array_map(static fn($r) => (string)$r['program_code'], $active))),
-        'active_exam_batch_count' => count($active),
-        'source' => $configured !== null ? 'ACADEMIC_PERIOD_CALENDAR' : ($legacyActive !== null ? 'ACTIVE_EXAM_BATCH' : 'UNSET'),
-    ];
 }
 
 /** Every program generator must use exactly the same BCP-wide dates. */

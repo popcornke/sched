@@ -273,40 +273,142 @@ function upgradeSelects() {
         optionsList.className = "bcp-custom-select-options";
         wrapper.append(trigger, optionsList);
 
-        function sync() {
-            optionsList.innerHTML = '';
-            wrapper.classList.toggle('is-disabled', selectElem.disabled);
-            
-            if (selectElem.options.length === 0) {
-                triggerText.textContent = "Loading...";
-                return;
-            }
-            
-            let selectedLabel = "";
-            Array.from(selectElem.options).forEach(opt => {
-                if (opt.selected) selectedLabel = opt.text;
-                const item = document.createElement("div");
-                item.className = "bcp-custom-select-option";
-                item.textContent = opt.text;
-                if (opt.selected) item.classList.add('is-selected');
-                
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const nextValue = String(opt.value);
-                    const changed = String(selectElem.value) !== nextValue;
-                    selectElem.value = nextValue;
-                    sync();
-                    closeAllCustomSelects();
+function sync() {
+    optionsList.innerHTML = '';
 
-                    // Only a real USER selection change should reload data.
-                    if (changed) {
-                        selectElem.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                optionsList.appendChild(item);
-            });
-            triggerText.textContent = selectedLabel || "Select an option";
+    wrapper.classList.toggle(
+        'is-disabled',
+        selectElem.disabled
+    );
+
+    if (selectElem.options.length === 0) {
+        triggerText.textContent = 'Loading...';
+        return;
+    }
+
+    let selectedLabel = '';
+
+    Array.from(selectElem.options).forEach(opt => {
+
+        if (opt.selected) {
+            selectedLabel = opt.text;
         }
+
+        const item = document.createElement('div');
+
+        item.className =
+            'bcp-custom-select-option';
+
+        item.title = opt.text;
+
+        if (opt.selected) {
+            item.classList.add('is-selected');
+        }
+
+        /*
+         * Program labels use:
+         * BSIT — Bachelor of Science...
+         *
+         * Separate the code from the full program name
+         * so the dropdown is easier to scan.
+         */
+        const parts = String(opt.text)
+            .split('—')
+            .map(value => value.trim());
+
+        const content =
+            document.createElement('div');
+
+        content.className =
+            'bcp-custom-select-option-content';
+
+        if (parts.length > 1) {
+
+            const code =
+                document.createElement('span');
+
+            code.className =
+                'bcp-custom-select-option-code';
+
+            code.textContent = parts[0];
+
+            const name =
+                document.createElement('span');
+
+            name.className =
+                'bcp-custom-select-option-name';
+
+            name.textContent =
+                parts.slice(1).join(' — ');
+
+            content.append(code, name);
+
+        } else {
+
+            const name =
+                document.createElement('span');
+
+            name.className =
+                'bcp-custom-select-option-name bcp-custom-select-option-name--single';
+
+            name.textContent = opt.text;
+
+            content.append(name);
+        }
+
+        item.append(content);
+
+        if (opt.selected) {
+
+            const check =
+                document.createElement('i');
+
+            check.className =
+                'fa-solid fa-check bcp-custom-select-option-check';
+
+            item.append(check);
+        }
+
+        item.addEventListener(
+            'click',
+            (e) => {
+
+                e.stopPropagation();
+
+                const nextValue =
+                    String(opt.value);
+
+                const changed =
+                    String(selectElem.value)
+                    !== nextValue;
+
+                selectElem.value =
+                    nextValue;
+
+                sync();
+
+                closeAllCustomSelects();
+
+                if (changed) {
+                    selectElem.dispatchEvent(
+                        new Event(
+                            'change',
+                            { bubbles: true }
+                        )
+                    );
+                }
+            }
+        );
+
+        optionsList.appendChild(item);
+    });
+
+    triggerText.textContent =
+        selectedLabel || 'Select an option';
+
+    triggerText.title =
+        selectedLabel || '';
+}
 
         const observer = new MutationObserver(sync);
         observer.observe(selectElem, { childList: true, attributes: true, attributeFilter: ['disabled'] });

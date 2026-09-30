@@ -706,3 +706,335 @@ body.bcp-sub-page {
 @media (prefers-reduced-motion: reduce) {
     .bcp-sub__btn-primary, .bcp-sub__header, .bcp-sub__panel, .bcp-sub-modal__dialog { transition: none !important; animation: none !important; }
 }
+
+/* =========================================================
+   PREMIUM CUSTOM SELECT
+   Scoped only to Substitute Assignment Tracker
+   ========================================================= */
+
+.bcp-sub-page .bcp-sub__control {
+    overflow: visible;
+}
+
+.bcp-sub-page .bcp-custom-select-wrapper {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.bcp-sub-page .bcp-custom-select-wrapper:has(
+    .bcp-custom-select-options.is-open
+) {
+    z-index: 100;
+}
+
+/* Trigger */
+.bcp-sub-page .bcp-custom-select-trigger {
+    width: 100%;
+    min-height: 46px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    padding: 0 14px;
+
+    background: #fff;
+    border: 1px solid #d8e2f1;
+    border-radius: 10px;
+
+    cursor: pointer;
+
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, .025);
+
+    transition:
+        border-color .18s ease,
+        box-shadow .18s ease,
+        background-color .18s ease;
+}
+
+.bcp-sub-page .bcp-custom-select-trigger:hover {
+    border-color: #aebfdd;
+    background: #fbfcff;
+}
+
+.bcp-sub-page .bcp-custom-select-trigger.is-active {
+    border-color: #2149a6;
+
+    box-shadow:
+        0 0 0 3px rgba(33, 73, 166, .10),
+        0 8px 22px rgba(15, 23, 42, .06);
+
+    background: #fff;
+}
+
+.bcp-sub-page .bcp-custom-select-text {
+    min-width: 0;
+    flex: 1;
+
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    color: #17325f;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.bcp-sub-page .bcp-custom-select-arrow {
+    flex: 0 0 auto;
+
+    color: #7083a5;
+    font-size: 11px;
+
+    transition:
+        transform .18s ease,
+        color .18s ease;
+}
+
+.bcp-sub-page
+.bcp-custom-select-trigger.is-active
+.bcp-custom-select-arrow {
+    transform: rotate(180deg);
+    color: #2149a6;
+}
+
+/* Dropdown panel */
+.bcp-sub-page .bcp-custom-select-options {
+    position: absolute;
+
+    top: calc(100% + 8px);
+    left: 0;
+
+    width: 100%;
+    min-width: 360px;
+    max-width: min(440px, calc(100vw - 32px));
+
+    max-height: 310px;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    padding: 7px;
+
+    background: rgba(255, 255, 255, .98);
+
+    border: 1px solid #dce5f2;
+    border-radius: 14px;
+
+    box-shadow:
+        0 18px 45px rgba(15, 23, 42, .14),
+        0 3px 10px rgba(15, 23, 42, .05);
+
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+
+    opacity: 0;
+    visibility: hidden;
+
+    transform:
+        translateY(-5px)
+        scale(.985);
+
+    transform-origin: top left;
+
+    pointer-events: none;
+
+    transition:
+        opacity .16s ease,
+        transform .16s ease,
+        visibility .16s ease;
+
+    z-index: 1000;
+}
+
+.bcp-sub-page
+.bcp-custom-select-options.is-open {
+    opacity: 1;
+    visibility: visible;
+
+    transform:
+        translateY(0)
+        scale(1);
+
+    pointer-events: auto;
+}
+
+/* Option */
+.bcp-sub-page .bcp-custom-select-option {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    min-height: 54px;
+
+    padding: 9px 11px;
+
+    border: 1px solid transparent;
+    border-radius: 10px;
+
+    cursor: pointer;
+
+    transition:
+        background-color .15s ease,
+        border-color .15s ease,
+        transform .15s ease;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option
++ .bcp-custom-select-option {
+    margin-top: 3px;
+}
+
+.bcp-sub-page .bcp-custom-select-option:hover {
+    background: #f4f7fc;
+    border-color: #e3eaf5;
+}
+
+.bcp-sub-page .bcp-custom-select-option:active {
+    transform: scale(.992);
+}
+
+/* Selected option */
+.bcp-sub-page
+.bcp-custom-select-option.is-selected {
+    background: #eef9f4;
+    border-color: #c9eadb;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option.is-selected:hover {
+    background: #e8f7f0;
+}
+
+/* Program details */
+.bcp-sub-page
+.bcp-custom-select-option-content {
+    min-width: 0;
+    flex: 1;
+
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option-code {
+    color: #183d81;
+
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+
+    letter-spacing: .01em;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option-name {
+    display: block;
+
+    color: #65758f;
+
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option-name--single {
+    color: #17325f;
+
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option.is-selected
+.bcp-custom-select-option-code {
+    color: #10734f;
+}
+
+.bcp-sub-page
+.bcp-custom-select-option.is-selected
+.bcp-custom-select-option-name {
+    color: #4c7868;
+}
+
+/* Check icon */
+.bcp-sub-page
+.bcp-custom-select-option-check {
+    flex: 0 0 auto;
+
+    width: 24px;
+    height: 24px;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 50%;
+
+    background: #d9f4e8;
+    color: #14845c;
+
+    font-size: 10px;
+}
+
+/* Disabled */
+.bcp-sub-page
+.bcp-custom-select-wrapper.is-disabled
+.bcp-custom-select-trigger {
+    cursor: not-allowed;
+
+    background: #f4f6fa;
+    border-color: #e3e8f0;
+
+    opacity: .7;
+}
+
+/* Cleaner scrollbar */
+.bcp-sub-page
+.bcp-custom-select-options::-webkit-scrollbar {
+    width: 7px;
+}
+
+.bcp-sub-page
+.bcp-custom-select-options::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bcp-sub-page
+.bcp-custom-select-options::-webkit-scrollbar-thumb {
+    background: #cbd5e4;
+    border-radius: 999px;
+}
+
+.bcp-sub-page
+.bcp-custom-select-options::-webkit-scrollbar-thumb:hover {
+    background: #aab8ce;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+
+    .bcp-sub-page
+    .bcp-custom-select-options {
+        min-width: 100%;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .bcp-sub-page
+    .bcp-custom-select-option {
+        min-height: 50px;
+    }
+}

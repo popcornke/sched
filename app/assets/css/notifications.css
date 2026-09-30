@@ -104,6 +104,26 @@
     font-weight: 600;
 }
 
+.bcp-notification-center__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.bcp-notification-center__actions .bcp-notification-center__mark:first-child {
+    width: 32px;
+    height: 32px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+}
+
+.bcp-notification-center__actions .bcp-notification-center__mark:first-child[aria-pressed="false"] {
+    color: #7f8ba0;
+}
+
 .bcp-notification-center__mark {
     flex: 0 0 auto;
     padding: 7px 9px;
@@ -397,6 +417,14 @@
 }
 
 @media (max-width: 600px) {
+    .bcp-notification-center__header {
+        gap: 8px;
+    }
+
+    .bcp-notification-center__actions {
+        gap: 2px;
+    }
+
     .bcp-notification-center {
         max-height: min(560px, calc(100vh - 92px));
         border-radius: 14px;

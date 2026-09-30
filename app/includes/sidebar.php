@@ -552,7 +552,12 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             <h2>Notifications</h2>
             <p id="bcpNotificationSummary">You're all caught up.</p>
         </div>
-        <button type="button" class="bcp-notification-center__mark" id="bcpNotificationMarkAll">Mark all as read</button>
+        <div class="bcp-notification-center__actions">
+            <button type="button" class="bcp-notification-center__mark" id="bcpNotificationSoundToggle" aria-pressed="true" title="Notification sound on" aria-label="Turn notification sound off">
+                <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="bcp-notification-center__mark" id="bcpNotificationMarkAll">Mark all as read</button>
+        </div>
     </div>
     <div class="bcp-notification-center__list" id="bcpNotificationList"></div>
     <div class="bcp-notification-center__empty" id="bcpNotificationEmpty">
@@ -743,17 +748,67 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         const empty = document.getElementById('bcpNotificationEmpty');
         const summary = document.getElementById('bcpNotificationSummary');
         const markAll = document.getElementById('bcpNotificationMarkAll');
+        const soundToggle = document.getElementById('bcpNotificationSoundToggle');
         const toastStack = document.getElementById('bcpToastStack');
 
-        if (!bell || !badge || !panel || !list || !empty || !summary || !markAll || !toastStack) {
+        if (!bell || !badge || !panel || !list || !empty || !summary || !markAll || !soundToggle || !toastStack) {
             return;
         }
 
         const notificationApi = <?= json_encode($APP_ROOT . 'api/notifications.php', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        const notificationSoundUrl = <?= json_encode($APP_ROOT . 'assets/sounds/notification.mp3', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         const csrfToken = <?= json_encode(function_exists('authCsrf') ? authCsrf() : '', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        const notificationSoundStorageKey = 'bcp_notification_sound';
         let notifications = [];
         let unreadTotal = 0;
         let refreshInFlight = null;
+
+        function isNotificationSoundEnabled() {
+            try {
+                return window.localStorage.getItem(notificationSoundStorageKey) !== 'off';
+            } catch (_) {
+                return true;
+            }
+        }
+
+        function setNotificationSoundEnabled(enabled) {
+            try {
+                window.localStorage.setItem(notificationSoundStorageKey, enabled ? 'on' : 'off');
+            } catch (_) {
+                // The toggle still works for the current page even if storage is unavailable.
+            }
+            soundToggle.dataset.enabled = enabled ? 'true' : 'false';
+            updateSoundToggle();
+        }
+
+        function updateSoundToggle() {
+            const enabled = soundToggle.dataset.enabled === 'true';
+            soundToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            soundToggle.setAttribute('aria-label', enabled ? 'Turn notification sound off' : 'Turn notification sound on');
+            soundToggle.title = enabled ? 'Notification sound on' : 'Notification sound off';
+            soundToggle.innerHTML = enabled
+                ? '<i class="fa-solid fa-volume-high" aria-hidden="true"></i>'
+                : '<i class="fa-solid fa-volume-xmark" aria-hidden="true"></i>';
+        }
+
+        soundToggle.dataset.enabled = isNotificationSoundEnabled() ? 'true' : 'false';
+        updateSoundToggle();
+
+        // Optional notification sound. Missing/blocked audio never interrupts the UI.
+        function playNotificationSound() {
+            if (soundToggle.dataset.enabled !== 'true') return;
+
+            try {
+                const audio = new Audio(notificationSoundUrl);
+                audio.volume = 0.35;
+                const playback = audio.play();
+                if (playback && typeof playback.catch === 'function') {
+                    playback.catch(() => {});
+                }
+            } catch (_) {
+                // Sound is optional. Never interrupt sidebar/notification behavior.
+            }
+        }
 
         function normaliseType(type) {
             return ['success', 'info', 'warning', 'error'].includes(type) ? type : 'info';
@@ -1055,7 +1110,9 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             };
 
             // Toast appears immediately so notification storage never delays the completed action UI.
+            // Sound is played only for this newly-created notification, never on page refresh/fetch.
             showToast(draft);
+            playNotificationSound();
 
             try {
                 const data = await apiPost({
@@ -1084,6 +1141,12 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             event.preventDefault();
             event.stopPropagation();
             panel.hidden ? openPanel() : closePanel();
+        });
+
+        soundToggle.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setNotificationSoundEnabled(soundToggle.dataset.enabled !== 'true');
         });
 
         markAll.addEventListener('click', event => {

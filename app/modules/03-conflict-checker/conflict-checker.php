@@ -299,7 +299,8 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
       audit.total_issues?'error':audit.warnings.length?'warning':'success');
   }
   
-  async function run() {
+  async function run(options = {}) {
+    const shouldNotify = options.notify === true;
     const seq=++requestId;
     $('ccRun').disabled=true;
     status('Checking all ACTIVE DEMO schedules for the selected academic period…', 'loading');
@@ -310,12 +311,14 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
       const audit = result.audit || {};
       const issueCount = Number(audit.total_issues || 0);
       const warningCount = Array.isArray(audit.warnings) ? audit.warnings.length : 0;
-      window.BCPNotifications?.notify({
-        type: issueCount > 0 ? 'error' : (warningCount > 0 ? 'warning' : 'success'),
-        title: issueCount > 0 ? 'Conflict check found issues' : (warningCount > 0 ? 'Conflict check completed with warnings' : 'Conflict check passed'),
-        message: `${audit.checked_meetings || 0} saved meeting(s) checked · ${issueCount} issue(s) · ${warningCount} warning(s).`,
-        url: `${window.location.pathname}${window.location.search}`
-      });
+      if (shouldNotify) {
+        window.BCPNotifications?.notify({
+          type: issueCount > 0 ? 'error' : (warningCount > 0 ? 'warning' : 'success'),
+          title: issueCount > 0 ? 'Conflict check found issues' : (warningCount > 0 ? 'Conflict check completed with warnings' : 'Conflict check passed'),
+          message: `${audit.checked_meetings || 0} saved meeting(s) checked · ${issueCount} issue(s) · ${warningCount} warning(s).`,
+          url: `${window.location.pathname}${window.location.search}`
+        });
+      }
     } catch(e) {
       if(seq!==requestId) return;
       report=null;
@@ -338,11 +341,12 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
       const selection=catalog.selected_period?.academic_period_id;
       if(selection && periods.some(p=>Number(p.academic_period_id)===Number(selection))) period.value=String(selection);
       upgradeSelects();
-      await run();
+      await run({ notify: false });
     } catch(e) { status(e.message,'error'); }
   }
   
-  $('ccRun').addEventListener('click',run);$('ccPeriod').addEventListener('change',run);
+  $('ccRun').addEventListener('click', () => run({ notify: true }));
+  $('ccPeriod').addEventListener('change', () => run({ notify: false }));
   $('ccType').addEventListener('change',renderIssues);$('ccSearch').addEventListener('input',renderIssues);
   
   initialize();

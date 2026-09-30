@@ -483,6 +483,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             let controller = null;
+            let notifyNextCheck = false;
             async function check() {
                 const q = query();
                 if (!valid(q)) {
@@ -517,16 +518,27 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     status(`Checked ${data.summary.total} rooms. Available: ${data.summary.available}. Not reserved by this search.`);
                     $('raPrint').disabled = false;
                     render();
+                    if (notifyNextCheck) {
+                        window.BCPNotifications?.notify({
+                            type: Number(data.summary.available || 0) > 0 ? 'success' : 'warning',
+                            title: Number(data.summary.available || 0) > 0 ? 'Room availability checked' : 'No available rooms found',
+                            message: `${data.date} · ${data.start_time}–${data.end_time}: ${data.summary.available} available of ${data.summary.total} checked room(s).`,
+                            url: `${window.location.pathname}${window.location.search}`
+                        });
+                    }
+                    notifyNextCheck = false;
 
                 } catch (e) {
                     if (seq !== requestNo || e.name === 'AbortError') return;
                     report = null;
+                    notifyNextCheck = false;
                     status(e.message, true);
                     $('raRows').replaceChildren(el('div', e.message, 'bcp-ra__empty'));
                 }
             }
 
             function schedule() {
+                notifyNextCheck = true;
                 clearTimeout(timer);
                 timer = setTimeout(check, 220);
             }

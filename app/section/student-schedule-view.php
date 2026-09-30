@@ -343,6 +343,12 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
       table('f2fTable',data.meetings.filter(m=>m.delivery_mode==='F2F'));
       table('onlineTable',data.meetings.filter(m=>m.delivery_mode==='ONLINE'));
       el('studentProfile').hidden=false; el('studentResults').hidden=false; el('studentEmpty').hidden=true;
+      window.BCPNotifications?.notify({
+        type: data.student_overlap_check?.passed ? 'success' : 'warning',
+        title: data.student_overlap_check?.passed ? 'Student schedule loaded' : 'Student schedule needs review',
+        message: `${data.student.full_name} · ${data.meeting_count} class meeting(s) · ${data.student_overlap_check?.conflicts?.length || 0} overlap(s).`,
+        url: `${window.location.pathname}${window.location.search}`
+      });
     } catch(error) {
       if (error.name==='AbortError') return;
       el('studentEmpty').hidden = false;

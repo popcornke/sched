@@ -80,6 +80,12 @@ $('generate').addEventListener('click',async()=>{if(busy||!$('ack').checked)retu
  const table=elt('table'),head=elt('tr');['Date','Day','Start','End','Room ID','Teacher ID'].forEach(t=>head.append(elt('th',t)));table.append(head);
  data.assignments.forEach(a=>{const tr=elt('tr');[a.meeting_date,a.day_of_week,a.start_time,a.end_time,a.room_id,a.teacher_id].forEach(v=>tr.append(elt('td',v===null?'Online':v)));table.append(tr);});
  $('meetings').replaceChildren(table);$('result').hidden=false;note('DEMO preview passed independent audit. No records were saved.');
+ window.BCPNotifications?.notify({
+   type:'success',
+   title:'Special class DEMO preview passed',
+   message:`${data.participant_count} student(s) · ${data.occurrence_count} weekly meeting(s) independently audited. No records were saved.`,
+   url:`${window.location.pathname}${window.location.search}`
+ });
  }catch(e){note(e.message,true);}finally{busy=false;update();}});
 Promise.all([loadSubjects(),loadStudents()]).catch(e=>note(e.message,true));
 })();

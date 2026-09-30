@@ -357,7 +357,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           print.append(eventCard(e));
         }
       }
-      async function load() {
+      async function load(notifyUser = false) {
         const token = ++loading;
         status('Loading saved meetings…');
         $('ciRefresh').disabled = true;
@@ -377,6 +377,14 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           effective();
           const warning = (body.warnings || []).join(' ');
           status(`Loaded ${body.event_count} saved event occurrences. ${warning} No records were changed.`);
+          if (notifyUser) {
+            window.BCPNotifications?.notify({
+              type: (body.warnings || []).length ? 'warning' : 'success',
+              title: 'Calendar records refreshed',
+              message: `${body.event_count} saved event occurrence(s) loaded for the visible calendar range.${(body.warnings || []).length ? ` ${(body.warnings || []).length} warning(s) reported.` : ''}`,
+              url: `${window.location.pathname}${window.location.search}`
+            });
+          }
         } catch (err) {
           if (token !== loading) return;
           all = [];
@@ -446,9 +454,16 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             month = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
             load();
           });
-          $('ciRefresh').addEventListener('click', load);
+          $('ciRefresh').addEventListener('click', () => load(true));
           $('ciPrint').addEventListener('click', () => {
             renderDay();
+            const selectedEvents = visible.filter(e => e.date === selected).length;
+            window.BCPNotifications?.notify({
+              type: 'info',
+              title: 'Calendar day opened for printing',
+              message: `${longDate(selected)} · ${selectedEvents} matching saved event(s).`,
+              url: `${window.location.pathname}${window.location.search}`
+            });
             window.print();
           });
           document.addEventListener('keydown', e => {

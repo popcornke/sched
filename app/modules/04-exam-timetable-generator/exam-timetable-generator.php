@@ -316,6 +316,12 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
      if(Array.isArray(data.exam_dates))for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];
      applyDateLock();$('examGenerate').disabled=false;
      setStatus(unifiedLocked?'Unified examination dates are already locked and unchanged.':'Unified BCP examination dates saved. All program exam generators for this academic period must use these same dates.','success');
+     window.BCPNotifications?.notify({
+       type: unifiedLocked ? 'info' : 'success',
+       title: unifiedLocked ? 'Exam dates already locked' : 'Unified exam dates saved',
+       message: unifiedLocked ? 'The existing BCP-wide examination dates were kept unchanged.' : `BCP-wide exam dates saved: ${dates.map(niceDate).join(' · ')}.`,
+       url: `${window.location.pathname}${window.location.search}`
+     });
    }catch(e){setStatus(e.message,'error');}
    finally{pending=false;applyDateLock();$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;}
  }
@@ -397,7 +403,13 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  if(!program){setStatus('Choose a program.','error');pending=false;return;}
  try{const replacing=hasSaved;const data=await api(replacing?'exam-replacement-preview.php':'exam-preview.php','POST',{program,period_id:Number($('examPeriod').value),exam_dates:dates,exam_window:$('examWindow').value,...(replacing?{replace_exam_batch_id:activeExamBatchId}:{})});
  if(data.status!=='EXAM_PREVIEW_READY'||data.returned_exams!==data.required_exams||(data.issues||[]).length||data.gap_audit?.passed!==true||!data.preview_token||(hasSaved && (!data.replacement_preview||Number(data.replace_exam_batch_id)!==activeExamBatchId)))throw Error('Generated preview is incomplete, failed the result audit or has a changed replacement baseline.');
- result=data;render(data);$('examReportBadge').textContent=hasSaved?'UNSAVED REPLACEMENT PREVIEW':'UNSAVED DEMO PREVIEW';$('examReportBadge').classList.add('bcp-exam__chip--warning');$('examSave').disabled=false;setStatus(`Zero-gap ${hasSaved?'replacement ':''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved?'The previous ACTIVE exam batch is unchanged. ':''}Review the proposed timetable before confirming.`, 'success');}
+ result=data;render(data);$('examReportBadge').textContent=hasSaved?'UNSAVED REPLACEMENT PREVIEW':'UNSAVED DEMO PREVIEW';$('examReportBadge').classList.add('bcp-exam__chip--warning');$('examSave').disabled=false;setStatus(`Zero-gap ${hasSaved?'replacement ':''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved?'The previous ACTIVE exam batch is unchanged. ':''}Review the proposed timetable before confirming.`, 'success');
+ window.BCPNotifications?.notify({
+   type: 'success',
+   title: hasSaved ? 'Exam replacement preview ready' : 'Exam timetable preview ready',
+   message: `${program}: ${data.returned_exams}/${data.required_exams} exams assigned with zero reported gap-audit issues. Preview is not saved yet.`,
+   url: `${window.location.pathname}${window.location.search}`
+ });}
  catch(e){setStatus(e.message,'error');}finally{pending=false;$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;applyDateLock();}
  });
  
@@ -424,6 +436,12 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
       if(saved.status!==(replacing?'EXAM_REPLACED':'EXAM_SAVED'))throw Error('Exam save did not finish.');
       await loadUnifiedPeriod();
       await loadSaved();
+      window.BCPNotifications?.notify({
+        type: 'success',
+        title: replacing ? 'Exam timetable replaced' : 'Exam timetable saved',
+        message: `${saved.program || $('examProgram').value} exam batch #${saved.exam_batch_id} saved with ${saved.saved_exams || 0} exam meeting(s).`,
+        url: `${window.location.pathname}${window.location.search}`
+      });
   }catch(e){setStatus(e.message,'error');$('examSave').disabled=false;}
   finally{pending=false;$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;applyDateLock();}
  });

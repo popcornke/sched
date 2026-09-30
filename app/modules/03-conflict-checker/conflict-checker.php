@@ -307,6 +307,15 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
       const result=await json('./conflict-check.php?period_id='+encodeURIComponent($('ccPeriod').value));
       if(seq!==requestId) return;
       render(result);
+      const audit = result.audit || {};
+      const issueCount = Number(audit.total_issues || 0);
+      const warningCount = Array.isArray(audit.warnings) ? audit.warnings.length : 0;
+      window.BCPNotifications?.notify({
+        type: issueCount > 0 ? 'error' : (warningCount > 0 ? 'warning' : 'success'),
+        title: issueCount > 0 ? 'Conflict check found issues' : (warningCount > 0 ? 'Conflict check completed with warnings' : 'Conflict check passed'),
+        message: `${audit.checked_meetings || 0} saved meeting(s) checked · ${issueCount} issue(s) · ${warningCount} warning(s).`,
+        url: `${window.location.pathname}${window.location.search}`
+      });
     } catch(e) {
       if(seq!==requestId) return;
       report=null;

@@ -216,7 +216,15 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
             for (const id of ['tbDay', 'tbState', 'tbSearch']) $(id).addEventListener(id === 'tbSearch' ? 'input' : 'change', draw);
             $('tbPrint').addEventListener('click', () => {
-                if (data) window.print();
+                if (data) {
+                    window.BCPNotifications?.notify({
+                        type: 'info',
+                        title: 'Time block inventory opened for printing',
+                        message: `${data.slot_count} recorded time slot(s) are included in the current read-only inventory.`,
+                        url: `${window.location.pathname}${window.location.search}`
+                    });
+                    window.print();
+                }
             });
             load();
         })();

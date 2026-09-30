@@ -71,13 +71,19 @@ $('tb9bImpactCount').textContent=r.affected_saved_meeting_count+' affected';
 $('tb9bImpactNote').textContent=r.no_effect?'This range already has the selected status. No time slots would change.':r.requested_change.action==='ENABLE'?'Enabling inactive blocks does not remove existing scheduled time. Availability and institutional policies still require review.':r.affected_saved_meeting_count?'These ACTIVE saved meetings use blocks that would be disabled. Do not apply the proposed change.':'No impacted ACTIVE saved meetings found in the checked tables. This is NOT a final authorization to change the global time slots.';
 const body=$('tb9bImpacts');body.replaceChildren();if(!r.affected_saved_meetings.length){const tr=node('tr'),td=node('td','No affected ACTIVE meeting returned by this read-only check.');td.colSpan=6;tr.append(td);body.append(tr);return;}
 for(const x of r.affected_saved_meetings){const tr=node('tr');for(const text of [x.booking_type+' #'+x.booking_id,'#'+x.batch_id+' / #'+x.academic_period_id,x.program_code+' / '+x.section_code,x.subject_code,x.weekday+(x.meeting_date?' · '+x.meeting_date:''),x.start_time+'–'+x.end_time])tr.append(node('td',text));body.append(tr);}}
-async function preview(){if(!catalog||!$('tb9bFrom').value||!$('tb9bTo').value)return;
+async function preview(notifyUser=false){if(!catalog||!$('tb9bFrom').value||!$('tb9bTo').value)return;
 const serial=++requestSerial;$('tb9bRefresh').disabled=true;$('tb9bPrint').disabled=true;last=null;$('tb9bResult').hidden=true;
 if($('tb9bFrom').value>=$('tb9bTo').value){message('End time must be after start time.',true);$('tb9bRefresh').disabled=false;return;}
 message('Checking existing global time slots and ACTIVE saved meetings…');
 try{const response=await fetch('time-block-preview-api.php',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json','Content-Type':'application/json'},body:JSON.stringify({day:$('tb9bDay').value,start_time:$('tb9bFrom').value,end_time:$('tb9bTo').value,action:$('tb9bAction').value})});
 const r=await response.json();if(serial!==requestSerial)return;if(!response.ok||r.success!==true)throw Error(r.message||r.status||'Preview failed.');
 draw(r);message(`Preview ready: ${r.changed_slot_count} slot(s) would change; ${r.affected_saved_meeting_count} ACTIVE meeting(s) affected. Nothing was saved.`);
+if(notifyUser){window.BCPNotifications?.notify({
+ type:Number(r.affected_saved_meeting_count||0)>0?'warning':'success',
+ title:'Time block impact rechecked',
+ message:`${r.changed_slot_count} slot(s) would change · ${r.affected_saved_meeting_count} ACTIVE meeting(s) affected. Nothing was saved.`,
+ url:`${window.location.pathname}${window.location.search}`
+});}
 }catch(e){if(serial===requestSerial)message(e.message||'Preview failed; check Apache log.',true);}finally{if(serial===requestSerial)$('tb9bRefresh').disabled=false;}}
 async function init(){try{const response=await fetch('time-block-api.php?action=catalog',{cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json'}});const r=await response.json();if(!response.ok||r.success!==true)throw Error(r.message||r.status||'Unable to load inventory.');
 if(r.truncated)throw Error('Inventory is truncated; preview is blocked to avoid incomplete source coverage.');
@@ -85,6 +91,6 @@ const mandatory=['time_slot_id','day_of_week','day_pattern','start_time','end_ti
 catalog=r;options('tb9bDay',WEEK,WEEK[0]);$('tb9bAction').disabled=false;selectedTimes();$('tb9bRefresh').disabled=false;await preview();
 }catch(e){message(e.message||'Unable to load the database inventory.',true);}}
 $('tb9bDay').addEventListener('change',()=>{selectedTimes();preview();});for(const id of ['tb9bAction','tb9bFrom','tb9bTo'])$(id).addEventListener('change',preview);
-$('tb9bRefresh').addEventListener('click',preview);$('tb9bPrint').addEventListener('click',()=>{if(last)window.print();});init();
+$('tb9bRefresh').addEventListener('click',()=>preview(true));$('tb9bPrint').addEventListener('click',()=>{if(last){window.BCPNotifications?.notify({type:'info',title:'Time block preview opened for printing',message:'The current read-only time block impact preview is being printed.',url:`${window.location.pathname}${window.location.search}`});window.print();}});init();
 })();
 </script></body></html>

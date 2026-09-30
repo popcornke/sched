@@ -278,7 +278,14 @@ function renderPrepared(result){const root=$('scResult');root.replaceChildren();
 
 async function prepare(){if(state.busy||$('scPrepare').disabled)return;state.busy=true;updateButton();announce('Verifying current faculty authorization, student memberships and weekly dates…', 'loading');
  const body={action:'prepare',period_id:state.period,program_id:state.program,class_type:$('scType').value,subject_id:Number($('scSubject').value),teacher_id:Number($('scTeacher').value),student_ids:[...state.selected.keys()],start_date:$('scStart').value,end_date:$('scEnd').value,weekdays:[...document.querySelectorAll('input[name="scDay"]:checked')].map(x=>x.value)};
- try{const data=await api('./special-class-preparation.php','POST',body);state.prepared=data;state.policyReady=false;renderPrepared(data);announce(`Prepared ${data.occurrence_count} proposed weekly date(s) for ${data.participant_count} student(s). UNSAVED; no time or room assigned.`,'success');$('scResult').scrollIntoView({behavior:'smooth',block:'nearest'});}
+ try{const data=await api('./special-class-preparation.php','POST',body);state.prepared=data;state.policyReady=false;renderPrepared(data);announce(`Prepared ${data.occurrence_count} proposed weekly date(s) for ${data.participant_count} student(s). UNSAVED; no time or room assigned.`,'success');
+ window.BCPNotifications?.notify({
+   type: 'info',
+   title: 'Special class request prepared',
+   message: `${data.subject?.subject_code || 'Special class'} · ${data.participant_count} student(s) · ${data.occurrence_count} proposed occurrence(s). Not saved yet.`,
+   url: `${window.location.pathname}${window.location.search}`
+ });
+ $('scResult').scrollIntoView({behavior:'smooth',block:'nearest'});}
  catch(err){state.prepared=null;invalidate();announce(err.message,'error');}finally{state.busy=false;updateButton();if(state.prepared)checkPolicy();}
 }
 
@@ -317,6 +324,12 @@ async function generateWeeklyPreview(){
    }
    $('scResult').append(node('h3','Conflict-checked weekly preview'),list);
    announce(`Unsaved preview: ${result.occurrence_count} meetings, ${result.independent_audit.total_issues} reported issues. No database write.`,'success');
+   window.BCPNotifications?.notify({
+     type: Number(result.independent_audit?.total_issues || 0) > 0 ? 'warning' : 'success',
+     title: 'Special class preview ready',
+     message: `${result.occurrence_count} meeting(s) independently checked · ${result.independent_audit?.total_issues || 0} issue(s). Preview remains unsaved.`,
+     url: `${window.location.pathname}${window.location.search}`
+   });
  }catch(err){announce(err.message,'error');}finally{state.busy=false;updateButton();}
 }
 

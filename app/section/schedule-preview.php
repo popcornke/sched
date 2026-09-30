@@ -1065,6 +1065,12 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     comparison.hidden = false;
                     replaceButton.hidden = false;
                     setStatus(`Replacement preview audited. Batch #${batchId} remains ACTIVE.`, "success");
+                    window.BCPNotifications?.notify({
+                        type: "success",
+                        title: "Schedule replacement preview ready",
+                        message: `BSIT replacement preview passed the audit. ACTIVE batch #${batchId} is unchanged until confirmation.`,
+                        url: `${window.location.pathname}${window.location.search}`
+                    });
                 } catch (err) {
                     setStatus(readableError(err, "Could not create a replacement preview. The ACTIVE batch was not changed."), "error");
                 } finally {
@@ -1096,6 +1102,12 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     replaceToken = null;
                     await loadCatalog(periodId, "BSIT", true);
                     setStatus("Replacement saved successfully. The new ACTIVE BSIT timetable is now displayed.", "success");
+                    window.BCPNotifications?.notify({
+                        type: "success",
+                        title: "Schedule replaced",
+                        message: `The BSIT replacement was saved successfully. New ACTIVE batch #${saved.batch_id || 'created'} is now displayed.`,
+                        url: `${window.location.pathname}${window.location.search}`
+                    });
                 } catch (err) {
                     setStatus(readableError(err, "The replacement could not be saved. The previous ACTIVE batch remains unchanged."), "error");
                 } finally {

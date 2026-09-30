@@ -425,6 +425,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             if (current!==requestSequence) return;
             showTeacher(data);
             announce(`Loaded ${data.teacher.teacher_name} · ${data.meeting_count} saved meeting(s).`,'success');
+            window.BCPNotifications?.notify({
+                type: data.mapping_validation?.passed ? 'success' : 'warning',
+                title: data.mapping_validation?.passed ? 'Teacher schedule loaded' : 'Teacher mapping needs review',
+                message: `${data.teacher.teacher_name}: ${data.meeting_count} saved meeting(s), ${data.mapping_validation?.total_issues || 0} mapping issue(s).`,
+                url: `${window.location.pathname}${window.location.search}`
+            });
         } catch (error) {
             if (error.name==='AbortError' || current!==requestSequence) return;
             announce(error.message,'error'); resetDetails('Unable to load this professor’s timetable.');

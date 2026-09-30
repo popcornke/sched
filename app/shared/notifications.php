@@ -5,6 +5,8 @@ declare(strict_types=1);
 /**
  * Shared database helpers for in-app notifications.
  * The caller is responsible for authenticating the request/user.
+ * Module 08 (Schedule Cloning Tool) is intentionally excluded from automatic
+ * application-event notifications until that module is completed.
  */
 
 function notificationNormaliseType(string $type): string

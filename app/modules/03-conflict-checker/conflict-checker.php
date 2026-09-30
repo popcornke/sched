@@ -60,9 +60,8 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
           <div>
             <p class="bcp-conflict__eyebrow"><span class="bcp-conflict__eyebrow-dot"></span> BCP CLASS SCHEDULING SYSTEM</p>
             <h1>Conflict Checker<span class="bcp-conflict__title-dot">.</span></h1>
-            <p>Check saved class meetings across all ACTIVE DEMO programs in the selected academic period.</p>
+            <p>Check saved class meetings across all ACTIVE programs in the selected academic period.</p>
           </div>
-          <span class="bcp-conflict__tag">DEMO · READ ONLY</span>
         </header>
         
         <section class="bcp-conflict__panel bcp-conflict__toolbar" aria-label="Audit settings">
@@ -303,7 +302,7 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
     const shouldNotify = options.notify === true;
     const seq=++requestId;
     $('ccRun').disabled=true;
-    status('Checking all ACTIVE DEMO schedules for the selected academic period…', 'loading');
+    status('Checking all ACTIVE schedules for the selected academic period…', 'loading');
     try {
       const result=await json('./conflict-check.php?period_id='+encodeURIComponent($('ccPeriod').value));
       if(seq!==requestId) return;
@@ -334,10 +333,10 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
       const periods=(catalog.periods||[]).filter(p=>p.period_status==='DEMO');
       const period=$('ccPeriod');
       period.replaceChildren();
-      periods.forEach(p=>period.add(new Option(p.academic_year+' · Semester '+p.semester+' (DEMO)',String(p.academic_period_id))));
+      periods.forEach(p=>period.add(new Option(p.academic_year+' · Semester '+p.semester +String(p.academic_period_id))));
       period.disabled=!periods.length;
       $('ccRun').disabled=!periods.length;
-      if (!periods.length) { status('No DEMO academic period is available.','warning'); return; }
+      if (!periods.length) { status('No academic period is available.','warning'); return; }
       const selection=catalog.selected_period?.academic_period_id;
       if(selection && periods.some(p=>Number(p.academic_period_id)===Number(selection))) period.value=String(selection);
       upgradeSelects();

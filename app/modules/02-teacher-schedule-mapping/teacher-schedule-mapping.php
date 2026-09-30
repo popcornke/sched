@@ -66,7 +66,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <h1>Teacher Schedule Mapping<span class="bcp-teacher-map__title-dot">.</span></h1>
                     <p>Read-only faculty schedules, teaching load, authorized subjects, and availability.</p>
                 </div>
-                <span class="bcp-teacher-map__chip">DEMO · READ ONLY</span>
             </header>
 
             <section class="bcp-teacher-map__panel bcp-teacher-map__panel--filters" aria-label="Faculty filters">
@@ -380,7 +379,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         const {teacher,summary,meetings}=data;
         $('tmName').textContent=teacher.teacher_name;
         $('tmMeta').textContent=`${teacher.employee_no} · ${data.program.program_code} · ${data.period.academic_year}, Semester ${data.period.semester}`;
-        $('tmBatch').textContent=data.batch_id ? `ACTIVE DEMO BATCH #${data.batch_id}` : 'NO ACTIVE DEMO TIMETABLE';
+        $('tmBatch').textContent=data.batch_id ? `ACTIVE  BATCH #${data.batch_id}` : 'NO ACTIVE  TIMETABLE';
         $('tmStats').replaceChildren();
         addStat('Teaching load',`${summary.weekly_teaching_hours} / ${summary.max_weekly_hours} hrs/week`);
         addStat('F2F hours',`${summary.f2f_hours} hrs`);
@@ -449,8 +448,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             if (current!==requestSequence) return;
             teachers=data.teachers;
             const shown=renderTeacherOptions();
-            announce(`${data.total_teachers} ${data.program.program_code} DEMO professor(s) · ${shown} shown · ${data.has_saved_schedule?'ACTIVE batch #'+data.batch_id:'no ACTIVE timetable'}.`,'success');
-            if (!shown) resetDetails('No DEMO professors found for this program and search.');
+            announce(`${data.total_teachers} ${data.program.program_code} professor(s) · ${shown} shown · ${data.has_saved_schedule?'ACTIVE batch #'+data.batch_id:'no ACTIVE timetable'}.`,'success');
+            if (!shown) resetDetails('No professors found for this program and search.');
         } catch(error) {
             if (error.name==='AbortError' || current!==requestSequence) return;
             announce(error.message,'error'); resetDetails('Unable to load faculty records.');
@@ -467,7 +466,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             const query=periodId?`?periodId=${encodeURIComponent(periodId)}`:'';
             catalog=await getJson(`../../api/program-catalog.php${query}`);
             const periods=catalog.periods.filter(p=>p.period_status==='DEMO');
-            if (!periods.length) throw new Error('No DEMO academic period is available.');
+            if (!periods.length) throw new Error('No academic period is available.');
             const currentPeriod=periods.find(p=>String(p.academic_period_id)===String(periodId)) || periods[0];
             setOptions($('tmPeriod'),periods,p=>p.academic_period_id,p=>`${p.academic_year} · Semester ${p.semester}`,currentPeriod.academic_period_id);
             setOptions($('tmProgram'),catalog.programs,p=>p.program_code,p=>`${p.program_code} — ${p.program_name}`,programCode);

@@ -68,7 +68,6 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
            <h1>Substitute Assignment Tracker<span class="bcp-sub__title-dot">.</span></h1>
            <p>Temporary coverage for a specific class date. Original class schedules and faculty profiles stay unchanged.</p>
           </div>
-          <span class="bcp-sub__chip">LOCAL DEMO</span>
          </header>
          
          <section class="bcp-sub__panel" aria-label="Select timetable and duty date">
@@ -91,7 +90,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
               </div>
           </div>
           <p class="bcp-sub__caption">A substitute covers only this date and selected F2F/Online meeting. This is not leave approval or a permanent change to the teaching timetable.</p>
-          <div class="bcp-sub__status" id="subStatus" role="status" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin bcp-sub__status-icon"></i> Loading DEMO class meetings…</div>
+          <div class="bcp-sub__status" id="subStatus" role="status" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin bcp-sub__status-icon"></i> Loading class meetings…</div>
          </section>
          
          <section class="bcp-sub__summary" aria-label="Schedule summary">
@@ -405,7 +404,7 @@ async function openMeeting(meeting){state.selected=meeting;el('subModal').hidden
  
 async function assign(){if(!state.selected||state.loading)return;const t=el('subCandidate').value;
  const reason=el('subReason').value.trim();if(reason.length<5){el('subCandidateInfo').textContent='Please provide a reason (at least five characters).';return;}
- if(!window.confirm('Confirm this one-day DEMO substitute assignment? The original saved timetable will NOT change.'))return;
+ if(!window.confirm('Confirm this one-day  substitute assignment? The original saved timetable will NOT change.'))return;
  state.loading=true;el('subConfirm').disabled=true;
  try{const data=await api('POST',{action:'assign',period_id:state.period,meeting_id:state.selected.meeting_id,duty_date:state.date,substitute_teacher_id:t,reason,csrf_token:state.csrf});
   const selectedMeeting = state.selected;

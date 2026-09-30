@@ -73,7 +73,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
                     <div class="bcp-exam__control">
                         <label for="examProgram">Program</label>
                         <select id="examProgram">
-                            <option value="BSIT">BSIT · Demo</option>
+                            <option value="BSIT">BSIT</option>
                         </select>
                     </div>
                     
@@ -103,7 +103,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
                 
                 <div class="bcp-exam__actions">
                     <button type="button" id="examGenerate" class="bcp-exam__btn-primary" disabled>Generate Exam Preview</button>
-                    <button type="button" id="examSave" class="bcp-exam__btn-secondary" disabled>Confirm &amp; Save DEMO</button>
+                    <button type="button" id="examSave" class="bcp-exam__btn-secondary" disabled>Confirm &amp; Save</button>
                     <button type="button" id="examPrint" class="bcp-exam__btn-secondary" disabled>Print Timetable</button>
                 </div>
                 
@@ -143,7 +143,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
                     </div>
                 </div>
                 
-                <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time. One fixed room is used for the same section across Day 1-Day 3; linked fourth-year Cluster + Major memberships must also share that room. Cluster and Major are printed as separate official section timetables. DEMO timetable; check approved exam requirements before official use.</p>
+                <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time. One fixed room is used for the same section across Day 1-Day 3; linked fourth-year Cluster + Major memberships must also share that room. Cluster and Major are printed as separate official section timetables. timetable; check approved exam requirements before official use.</p>
                 
                 <div id="examSections" class="bcp-exam__sections"></div>
                 
@@ -328,7 +328,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
         $('examSave').disabled = true;
         $('examGenerate').disabled = true;
         
-        $('examGenerate').innerHTML = 'Generate Exam Preview';$('examSave').innerHTML = 'Confirm & Save DEMO';
+        $('examGenerate').innerHTML = 'Generate Exam Preview';$('examSave').innerHTML = 'Confirm & ';
         
         try {
             const data = await api('exam-saved.php?period_id=' + encodeURIComponent($('examPeriod').value), 'GET');
@@ -344,17 +344,17 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
                 }
                 
                 render(data);
-                $('examReportBadge').textContent = 'SAVED DEMO · BATCH #' + data.exam_batch_id;
+                $('examReportBadge').textContent = 'SAVED · BATCH #' + data.exam_batch_id;
                 
                 $('examGenerate').disabled = false;
                 $('examGenerate').innerHTML = '<i class="fa-solid fa-code-compare"></i> Regenerate Exam Preview';
-                $('examSave').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO';
+                $('examSave').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace ';
                 
-                setStatus(`Loaded ACTIVE DEMO exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`, 'success');
+                setStatus(`Loaded ACTIVE exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`, 'success');
             } else {
                 $('examGenerate').disabled = false;
                 $('examGenerate').innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview';
-                setStatus('Choose three distinct examination dates, then generate a DEMO preview.', 'info');
+                setStatus('Choose three distinct examination dates, then generate a  preview.', 'info');
             }
         } catch (e) {
             setStatus(e.message, 'error');
@@ -368,12 +368,12 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
             p.replaceChildren();
             
             for (const item of data.periods || []) {
-                const opt = new Option(`${item.academic_year} · Semester ${item.semester} (DEMO)`, item.academic_period_id);
+                const opt = new Option(`${item.academic_year} · Semester ${item.semester}`, item.academic_period_id);
                 p.add(opt);
             }
             
             if (!(data.periods || []).length) {
-                throw Error('No DEMO academic period is available.');
+                throw Error('No  academic period is available.');
             }
             
             upgradeSelects();
@@ -525,7 +525,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
             result = data;
             render(data);
             
-            $('examReportBadge').textContent = hasSaved ? 'UNSAVED REPLACEMENT PREVIEW' : 'UNSAVED DEMO PREVIEW';
+            $('examReportBadge').textContent = hasSaved ? 'UNSAVED REPLACEMENT PREVIEW' : 'UNSAVED  PREVIEW';
             $('examSave').disabled = false;
             
             setStatus(`Zero-gap ${hasSaved ? 'replacement ' : ''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved ? 'The previous ACTIVE exam batch is unchanged. ' : ''}Review the proposed timetable before confirming.`, 'success');
@@ -568,7 +568,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
         const replacing = hasSaved;
         if (replacing && (!result.replacement_preview || Number(result.replace_exam_batch_id) !== activeExamBatchId)) return;
         
-        if (!window.confirm(replacing ? `Replace ACTIVE exam batch #${activeExamBatchId} with this validated DEMO preview? The old batch will remain in the database as SUPERSEDED.` : 'Save this new DEMO examination timetable?')) {
+        if (!window.confirm(replacing ? `Replace ACTIVE exam batch #${activeExamBatchId} with this validated  preview? The old batch will remain in the database as SUPERSEDED.` : 'Save this new  examination timetable?')) {
             return;
         }
         
@@ -598,7 +598,7 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'Admin', ENT_QUOTES, 'UTF-8');$ini
         } catch (e) {
             setStatus(e.message, 'error');
             $('examSave').disabled = false;
-            $('examSave').innerHTML = replacing ? '<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO' : 'Confirm & Save DEMO';
+            $('examSave').innerHTML = replacing ? '<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace ' : 'Confirm & Save ';
         } finally {
             pending = false;
             $('examGenerate').disabled = false;

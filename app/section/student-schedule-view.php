@@ -63,8 +63,9 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
           <div>
             <span class="bcp-students-eyebrow"><span class="bcp-students-eyebrow-dot"></span> BCP CLASS SCHEDULING · MODULE 1</span>
             <h1>Student Class Schedule<span class="bcp-students-title-dot">.</span></h1>
-            <p>BSIT · 2026–2027 · First Semester </p>
+            <p>BSIT · 2026–2027 · First Semester · Read-only DEMO</p>
           </div>
+          <span class="bcp-students-badge" title="DEMO Environment">DEMO DATA</span>
         </header>
         
         <section class="bcp-students-panel bcp-students-panel--filters" aria-label="Student search and selection">
@@ -299,10 +300,10 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
     select.replaceChildren(new Option('Loading students…',''));
     try {
       const data = await request({search:search.value.trim()},listController.signal);
-      select.replaceChildren(new Option('Choose a  student…',''));
+      select.replaceChildren(new Option('Choose a DEMO student…',''));
       data.students.forEach(s=>select.add(new Option(`${s.student_number} · ${s.first_name} ${s.last_name} · ${s.home_section}${s.major_section ? ' + '+s.major_section : ''}`,s.student_number)));
       select.disabled=data.students.length===0;
-      status(`${data.total__students}  students · ${data.shown} result(s) shown.`);
+      status(`${data.total_demo_students} DEMO students · ${data.shown} result(s) shown.`);
       
       renderSuggestions(data.students);
 
@@ -333,7 +334,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboa
       const data=await request({student_number:select.value},detailController.signal);
       el('studentName').textContent=data.student.full_name;
       el('studentInfo').textContent=`${data.student.student_number} · ${data.student.program_code} · Home section ${data.student.home_section}${data.student.major_section ? ' · Major section '+data.student.major_section : ''} · ${data.meeting_count} class meetings`;
-      el('studentBatch').textContent=`ACTIVE  Batch #${data.batch_id}`;
+      el('studentBatch').textContent=`ACTIVE DEMO Batch #${data.batch_id}`;
       const audit=el('studentAudit');
       audit.textContent=data.student_overlap_check.passed
         ? 'Student overlap check: no overlapping class times found. School-wide audit was not rerun.'

@@ -237,6 +237,20 @@ def solve_exam(data):
                 'proctor': proctor_var, 'day': day_var, 'eligible': set(eligible)
             })
 
+        # ==============================================================
+        # HARD RULE: ONE ROOM PER SECTION FOR THE ENTIRE EXAM PERIOD
+        # Day 1, Day 2, and Day 3 exams of the same section must use the
+        # exact same physical room. The solver may choose the room, but once
+        # chosen it becomes the section's locked exam room.
+        # ==============================================================
+        section_room_anchor = {}
+        for row in entries:
+            sid = int(row['exam']['section_id'])
+            if sid not in section_room_anchor:
+                section_room_anchor[sid] = row['room']
+            else:
+                model.Add(row['room'] == section_room_anchor[sid])
+
         # BCP paper-rotation policy:
         # - the same subject within the same year level must alternate between sections;
         # - different subjects may run at the same time;

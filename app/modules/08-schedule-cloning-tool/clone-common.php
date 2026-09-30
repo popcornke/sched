@@ -109,6 +109,23 @@ function cloneAddIssue(
 }
 
 
+function cloneHasHardIssue(
+    array $issues
+): bool {
+    foreach ($issues as $issue) {
+        if (
+            strtoupper(
+                (string) ($issue['severity'] ?? '')
+            ) === 'HARD'
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
 /* =========================================================
    SOURCE / TARGET CONTEXT
 ========================================================= */
@@ -1128,6 +1145,33 @@ function cloneBuildProposals(
 
         } else {
 
+            $sourceStudentCount =
+                (int) $meeting['student_count'];
+
+            $targetSectionStudentCount =
+                (int) $targetMapping['student_count'];
+
+
+            if (
+                $sourceStudentCount
+                !== $targetSectionStudentCount
+            ) {
+                cloneAddIssue(
+                    $issues,
+                    'STUDENT_COUNT_CHANGED',
+                    (
+                        'Section population changed from '
+                        . $sourceStudentCount
+                        . ' in the source period to '
+                        . $targetSectionStudentCount
+                        . ' in the target period. '
+                        . 'The timetable may still be used as a reference; target resources are revalidated.'
+                    ),
+                    'INFO'
+                );
+            }
+
+
             if (
                 !cloneTeacherAuthorized(
                     $db,
@@ -1203,6 +1247,28 @@ function cloneBuildProposals(
                         (
                             'Target-period room availability '
                             . 'does not cover this meeting.'
+                        )
+                    );
+                }
+
+
+                if (
+                    $meeting['room_id'] !== null
+                    && $meeting['room_capacity'] !== null
+                    && $targetSectionStudentCount
+                        > (int) $meeting['room_capacity']
+                ) {
+                    cloneAddIssue(
+                        $issues,
+                        'ROOM_CAPACITY_EXCEEDED',
+                        (
+                            'Target section has '
+                            . $targetSectionStudentCount
+                            . ' student(s), but '
+                            . ($meeting['room_name'] ?? 'the source room')
+                            . ' can hold only '
+                            . (int) $meeting['room_capacity']
+                            . '. Assign a larger room before saving.'
                         )
                     );
                 }
@@ -1345,10 +1411,21 @@ function cloneBuildProposals(
             'end_time' =>
                 (string) $meeting['end_time'],
 
+            'source_student_count' =>
+                (int) $meeting['student_count'],
+
+            'target_student_count' =>
+                $targetMapping === null
+                ? null
+                : (int) $targetMapping['student_count'],
+
+            'room_capacity' =>
+                $meeting['room_capacity'],
+
             'validation_status' =>
-                $issues === []
-                ? 'VALID'
-                : 'BLOCKED',
+                cloneHasHardIssue($issues)
+                ? 'BLOCKED'
+                : 'VALID',
 
             'issues' =>
                 $issues,

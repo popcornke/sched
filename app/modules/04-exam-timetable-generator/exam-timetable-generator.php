@@ -66,6 +66,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
               <h1>Exam Timetable Generator<span class="bcp-exam__title-dot">.</span></h1>
               <p>Set one BCP-wide three-day examination period, then generate each program separately. Every saved program must use the same unified dates.</p>
             </div>
+            <span class="bcp-exam__chip" title="Examination Management">DEMO · EXAM MANAGEMENT</span>
           </header>
           
           <section class="bcp-exam__panel" aria-label="Examination configuration">
@@ -102,7 +103,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
            <div class="bcp-exam__actions">
              <button type="button" class="bcp-exam__btn-secondary" id="examSetDates" disabled><i class="fa-solid fa-calendar-check"></i> Set Unified Exam Dates</button>
              <button type="button" class="bcp-exam__btn-primary" id="examGenerate" disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview</button>
-             <button type="button" class="bcp-exam__btn-secondary bcp-exam__btn-success" id="examSave" disabled><i class="fa-solid fa-floppy-disk"></i> Confirm &amp; Save</button>
+             <button type="button" class="bcp-exam__btn-secondary bcp-exam__btn-success" id="examSave" disabled><i class="fa-solid fa-floppy-disk"></i> Confirm &amp; Save DEMO</button>
              <button type="button" class="bcp-exam__btn-secondary" id="examPrint" disabled><i class="fa-solid fa-print"></i> Print Timetable</button>
            </div>
            <p id="examStatus" class="bcp-exam__status" role="status" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin bcp-exam__status-icon"></i> Loading academic periods…</p>
@@ -116,7 +117,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
                     <h2 id="reportTitle">Examination Schedule</h2>
                     <p id="reportInfo"></p>
                   </div>
-                  <span class="bcp-exam__chip bcp-exam__chip--warning" id="examReportBadge">UNSAVED PREVIEW</span>
+                  <span class="bcp-exam__chip bcp-exam__chip--warning" id="examReportBadge">UNSAVED DEMO PREVIEW</span>
                 </div>
                 
                 <div class="bcp-exam__stats">
@@ -126,7 +127,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
                   <div class="bcp-exam__stat-card"><span>Solver status</span><strong id="examSolver">—</strong></div>
                 </div>
                 
-                <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time, including actual Cluster + Major combinations. Cluster and Major are printed as separate official section timetables. timetable; check approved exam requirements before official use.</p>
+                <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time, including actual Cluster + Major combinations. Cluster and Major are printed as separate official section timetables. DEMO timetable; check approved exam requirements before official use.</p>
             </div>
             
             <div id="examSections" class="bcp-exam__sections"></div>
@@ -160,7 +161,6 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  const $=id=>document.getElementById(id);
  let result=null; let pending=false; let hasSaved=false; let activeExamBatchId=null;
  let unifiedConfigured=false; let unifiedLocked=false; let examDatesDirty=false; let unifiedActivePrograms=[];
- let programReadiness=new Map();
  
  const make=(tag,text,cls)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
  const format=time=>{const [hh,mm]=String(time).split(':').map(Number);return `${hh%12||12}:${String(mm).padStart(2,'0')} ${hh>=12?'PM':'AM'}`;};
@@ -267,50 +267,6 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  
  const currentDates=()=>[1,2,3].map(i=>$('examDate'+i).value);
  const datesValid=dates=>!dates.some(x=>!x)&&new Set(dates).size===3&&dates[0]<dates[1]&&dates[1]<dates[2];
- const selectedProgramInfo=()=>programReadiness.get($('examProgram').value)||null;
- const selectedProgramReady=()=>selectedProgramInfo()?.timetable_status==='READY';
-
- function updateGenerateAvailability(){
-   $('examGenerate').disabled=pending||!unifiedConfigured||examDatesDirty||!selectedProgramReady();
- }
-
- async function loadProgramsForPeriod(){
-   const periodId=$('examPeriod').value;
-   const select=$('examProgram');
-   const previous=select.value;
-   programReadiness=new Map();
-   select.disabled=true;
-   select.replaceChildren(new Option('Loading programs…',''));
-   if(!periodId)return;
-
-   const data=await api('exam-preview.php?period_id='+encodeURIComponent(periodId),'GET');
-   const programs=data.programs||[];
-   select.replaceChildren();
-
-   for(const item of programs){
-     const status=item.timetable_status==='READY'
-       ? 'Timetable available'
-       : (item.timetable_status==='MULTIPLE_ACTIVE_TIMETABLES' ? 'Check timetable data' : 'No timetable');
-     const label=`${item.program_code} · ${item.program_name} — ${status}`;
-     const option=new Option(label,item.program_code);
-     option.dataset.timetableStatus=item.timetable_status||'UNKNOWN';
-     select.add(option);
-     programReadiness.set(item.program_code,item);
-   }
-
-   if(!programs.length){
-     select.add(new Option('No active programs',''));
-     select.disabled=true;
-     updateGenerateAvailability();
-     return;
-   }
-
-   select.disabled=false;
-   if(previous && programReadiness.has(previous))select.value=previous;
-   else if(programReadiness.has('BSIT'))select.value='BSIT';
-   else select.selectedIndex=0;
-   updateGenerateAvailability();
- }
  
  function applyDateLock(){
    for(let i=1;i<=3;i++)$('examDate'+i).disabled=unifiedLocked;
@@ -319,8 +275,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  }
  
  function invalidatePreview(message='Examination configuration changed. Generate a fresh preview before saving.'){
-   if(result?.preview_token){result=null;$('examReport').hidden=true;$('examSave').disabled=true;$('examPrint').disabled=true;}
-   updateGenerateAvailability();
+   if(result?.preview_token){result=null;$('examReport').hidden=true;$('examSave').disabled=true;$('examPrint').disabled=true;}$('examGenerate').disabled=pending||!unifiedConfigured||examDatesDirty;
    if(message)setStatus(message,'info');
  }
  
@@ -339,7 +294,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
      if(Array.isArray(data.exam_dates)&&data.exam_dates.length===3){for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];}
      else{for(let i=1;i<=3;i++)$('examDate'+i).value='';}
      applyDateLock();
-     updateGenerateAvailability();
+     $('examGenerate').disabled=!unifiedConfigured;
      if(unifiedConfigured){
        const programs=unifiedActivePrograms.length?` Active exam programs: ${unifiedActivePrograms.join(', ')}.`:'';
        setStatus(unifiedLocked?`Unified BCP exam dates are locked because ${data.active_exam_batch_count} ACTIVE exam batch(es) already exist.${programs}`:'Unified BCP exam dates are set. You may update them until the first ACTIVE exam timetable is saved.','info');
@@ -359,55 +314,38 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
      const data=await api('exam-period.php','POST',{period_id:Number($('examPeriod').value),exam_dates:dates});
      unifiedConfigured=true;unifiedLocked=Boolean(data.locked);examDatesDirty=false;unifiedActivePrograms=data.active_programs||[];
      if(Array.isArray(data.exam_dates))for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];
-     applyDateLock();updateGenerateAvailability();
+     applyDateLock();$('examGenerate').disabled=false;
      setStatus(unifiedLocked?'Unified examination dates are already locked and unchanged.':'Unified BCP examination dates saved. All program exam generators for this academic period must use these same dates.','success');
    }catch(e){setStatus(e.message,'error');}
-   finally{pending=false;applyDateLock();updateGenerateAvailability();}
+   finally{pending=false;applyDateLock();$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;}
  }
  
  async function loadSaved(){
    result=null;hasSaved=false;activeExamBatchId=null;$('examReport').hidden=true;$('examPrint').disabled=true;$('examSave').disabled=true;
-   $('examGenerate').disabled=true;$('examGenerate').innerHTML='<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview';$('examSave').innerHTML='<i class="fa-solid fa-floppy-disk"></i> Confirm & Save';
+   $('examGenerate').disabled=true;$('examGenerate').innerHTML='<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview';$('examSave').innerHTML='<i class="fa-solid fa-floppy-disk"></i> Confirm & Save DEMO';
    const program=$('examProgram').value;
-   const readiness=selectedProgramInfo();
    if(!program){setStatus('Choose a program.','info');return;}
-   try{
-     const data=await api('exam-saved.php?period_id='+encodeURIComponent($('examPeriod').value)+'&program='+encodeURIComponent(program),'GET');
-     if(data.has_saved_exams){
-       hasSaved=true;activeExamBatchId=Number(data.exam_batch_id);result=data;data.solver_status='SAVED';
+   try{const data=await api('exam-saved.php?period_id='+encodeURIComponent($('examPeriod').value)+'&program='+encodeURIComponent(program),'GET');
+     if(data.has_saved_exams){hasSaved=true;activeExamBatchId=Number(data.exam_batch_id);result=data;data.solver_status='SAVED';
        for(let i=1;i<=3;i++){$('examDate'+i).value=data.exam_dates[i-1];}
-       render(data);$('examReportBadge').textContent='SAVED · BATCH #'+data.exam_batch_id;
+       render(data);$('examReportBadge').textContent='SAVED DEMO · BATCH #'+data.exam_batch_id;
        $('examReportBadge').classList.remove('bcp-exam__chip--warning');
-       $('examGenerate').innerHTML='<i class="fa-solid fa-code-compare"></i> Regenerate Exam Preview';$('examSave').innerHTML='<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace ';
-       updateGenerateAvailability();
-       if(readiness?.timetable_status==='READY'){
-         setStatus(`Loaded ACTIVE exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`,'success');
-       }else{
-         setStatus(`${program} has a saved exam timetable, but no single ACTIVE class timetable is currently available for regeneration. Printing remains available.`,'warning');
-       }
-     }else if(readiness?.timetable_status==='NO_TIMETABLE'){
-       updateGenerateAvailability();
-       setStatus(`${program} — No timetable. Generate and save the ${program} class timetable first before creating its examination timetable.`,'info');
-     }else if(readiness?.timetable_status==='MULTIPLE_ACTIVE_TIMETABLES'){
-       updateGenerateAvailability();
-       setStatus(`${program} has multiple ACTIVE class timetables. Resolve the class batches first; exactly one ACTIVE timetable is required for exam generation.`,'warning');
-     }else{
-       updateGenerateAvailability();
-       if(unifiedConfigured)setStatus(unifiedLocked?'Unified BCP exam dates are locked. Generate this program using the same school-wide dates.':'Unified dates are ready. Generate the program preview when ready.','info');
-     }
-   }catch(e){setStatus(e.message,'error');updateGenerateAvailability();}
+       $('examGenerate').disabled=false;$('examGenerate').innerHTML='<i class="fa-solid fa-code-compare"></i> Regenerate Exam Preview';$('examSave').innerHTML='<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO';
+       setStatus(`Loaded ACTIVE DEMO exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`,'success');
+     }else{$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;
+       if(unifiedConfigured)setStatus(unifiedLocked?'Unified BCP exam dates are locked. Generate this program using the same school-wide dates.':'Unified dates are ready. Generate the program preview when ready.','info');}
+   }catch(e){setStatus(e.message,'error');}
  }
  
- async function init(){try{
-   const data=await api('exam-preview.php','GET');
-   const p=$('examPeriod');p.replaceChildren();
-   for(const item of data.periods||[]){const opt=new Option(`${item.academic_year} · Semester ${item.semester}`,item.academic_period_id);p.add(opt);}
-   if(!(data.periods||[]).length)throw Error('No academic period is available.');
-   await loadProgramsForPeriod();
-   if(!$('examProgram').options.length)throw Error('No active program is available.');
+ async function init(){try{const data=await api('exam-preview.php','GET');const p=$('examPeriod');p.replaceChildren();
+   for(const item of data.periods||[]){const opt=new Option(`${item.academic_year} · Semester ${item.semester} (DEMO)`,item.academic_period_id);p.add(opt);}
+   const programs=$('examProgram');programs.replaceChildren();
+   for(const item of data.programs||[]){programs.add(new Option(`${item.program_code} · ${item.program_name}`,item.program_code));}
+   if(!(data.periods||[]).length)throw Error('No DEMO academic period is available.');
+   if(!(data.programs||[]).length)throw Error('No active college program is available.');
+   if([...programs.options].some(o=>o.value==='BSIT'))programs.value='BSIT';
    upgradeSelects();
-   await loadUnifiedPeriod();
-   await loadSaved();
+   await loadUnifiedPeriod();await loadSaved();
  }catch(e){setStatus(e.message,'error');}}
  
  function printSection(section,entries,dates){
@@ -457,15 +395,13 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  setStatus('Python OR-Tools is checking three exam days, rooms, fixed section proctors, student conflicts, and same-subject paper rotation. Please wait…','loading');
  const program=$('examProgram').value;
  if(!program){setStatus('Choose a program.','error');pending=false;return;}
- if(!selectedProgramReady()){setStatus(`${program} — No timetable. Generate and save the class timetable first before creating its examination timetable.`,'error');pending=false;updateGenerateAvailability();return;}
  try{const replacing=hasSaved;const data=await api(replacing?'exam-replacement-preview.php':'exam-preview.php','POST',{program,period_id:Number($('examPeriod').value),exam_dates:dates,exam_window:$('examWindow').value,...(replacing?{replace_exam_batch_id:activeExamBatchId}:{})});
  if(data.status!=='EXAM_PREVIEW_READY'||data.returned_exams!==data.required_exams||(data.issues||[]).length||data.gap_audit?.passed!==true||!data.preview_token||(hasSaved && (!data.replacement_preview||Number(data.replace_exam_batch_id)!==activeExamBatchId)))throw Error('Generated preview is incomplete, failed the result audit or has a changed replacement baseline.');
- result=data;render(data);$('examReportBadge').textContent=hasSaved?'UNSAVED REPLACEMENT PREVIEW':'UNSAVED PREVIEW';$('examReportBadge').classList.add('bcp-exam__chip--warning');$('examSave').disabled=false;setStatus(`Zero-gap ${hasSaved?'replacement ':''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved?'The previous ACTIVE exam batch is unchanged. ':''}Review the proposed timetable before confirming.`, 'success');
- window.BCPNotifications?.notify({type:'success',title:hasSaved?'Exam replacement preview ready':'Exam timetable preview ready',message:`${program}: ${data.returned_exams}/${data.required_exams} exams assigned successfully. Preview is not saved yet.`,url:`${window.location.pathname}${window.location.search}`});}
- catch(e){setStatus(e.message,'error');}finally{pending=false;applyDateLock();updateGenerateAvailability();}
+ result=data;render(data);$('examReportBadge').textContent=hasSaved?'UNSAVED REPLACEMENT PREVIEW':'UNSAVED DEMO PREVIEW';$('examReportBadge').classList.add('bcp-exam__chip--warning');$('examSave').disabled=false;setStatus(`Zero-gap ${hasSaved?'replacement ':''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved?'The previous ACTIVE exam batch is unchanged. ':''}Review the proposed timetable before confirming.`, 'success');}
+ catch(e){setStatus(e.message,'error');}finally{pending=false;$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;applyDateLock();}
  });
  
- $('examPeriod').addEventListener('change',async()=>{if(!pending){await loadProgramsForPeriod();await loadUnifiedPeriod();await loadSaved();}});$('examProgram').addEventListener('change',async()=>{if(!pending){invalidatePreview('');await loadSaved();}});
+ $('examPeriod').addEventListener('change',async()=>{if(!pending){await loadUnifiedPeriod();await loadSaved();}});$('examProgram').addEventListener('change',async()=>{if(!pending)await loadSaved();});
  $('examSetDates').addEventListener('click',saveUnifiedPeriod);$('examDate1').addEventListener('change',()=>{
    if(pending||unifiedLocked)return;
    const d1=$('examDate1').value;
@@ -480,19 +416,16 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  $('examSave').addEventListener('click',async()=>{
   if(pending||!result?.preview_token)return;
   const replacing=hasSaved;
-  const program=$('examProgram').value;
   if(replacing && (!result.replacement_preview||Number(result.replace_exam_batch_id)!==activeExamBatchId))return;
-  if(!window.confirm(replacing?`Replace ACTIVE exam batch #${activeExamBatchId} with this validated  preview? The old batch will remain in the database as SUPERSEDED.`:'Save this new  examination timetable?'))return;
+  if(!window.confirm(replacing?`Replace ACTIVE exam batch #${activeExamBatchId} with this validated DEMO preview? The old batch will remain in the database as SUPERSEDED.`:'Save this new DEMO examination timetable?'))return;
   pending=true;$('examSave').disabled=true;$('examGenerate').disabled=true;
   setStatus('Rechecking current database facts and exam conflicts before saving…','loading');
   try{const saved=await api(replacing?'exam-replacement-save.php':'exam-save.php','POST',{preview_token:result.preview_token});
       if(saved.status!==(replacing?'EXAM_REPLACED':'EXAM_SAVED'))throw Error('Exam save did not finish.');
-      window.BCPNotifications?.notify({type:'success',title:replacing?'Exam timetable replaced':'Exam timetable saved',message:`${program}: ${saved.saved_exams??result.returned_exams} exams saved successfully.`,url:`${window.location.pathname}${window.location.search}`});
-      await loadProgramsForPeriod();
       await loadUnifiedPeriod();
       await loadSaved();
   }catch(e){setStatus(e.message,'error');$('examSave').disabled=false;}
-  finally{pending=false;applyDateLock();updateGenerateAvailability();}
+  finally{pending=false;$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;applyDateLock();}
  });
  
  $('examPrint').addEventListener('click' ,()=>{if(result&&!pending)window.print();});

@@ -408,27 +408,14 @@ async function assign(){if(!state.selected||state.loading)return;const t=el('sub
  if(!window.confirm('Confirm this one-day DEMO substitute assignment? The original saved timetable will NOT change.'))return;
  state.loading=true;el('subConfirm').disabled=true;
  try{const data=await api('POST',{action:'assign',period_id:state.period,meeting_id:state.selected.meeting_id,duty_date:state.date,substitute_teacher_id:t,reason,csrf_token:state.csrf});
-  const selectedMeeting = state.selected;
   closeModal();await load();status(`Substitute assignment #${data.substitute_assignment_id} saved. Original class timetable is unchanged.`,'success');
-  window.BCPNotifications?.notify({
-    type: 'success',
-    title: 'Substitute assigned',
-    message: `Assignment #${data.substitute_assignment_id}${selectedMeeting ? ` · ${selectedMeeting.section_code} · ${selectedMeeting.subject_code}` : ''} · ${data.duty_date || state.date}.`,
-    url: `${window.location.pathname}${window.location.search}`
-  });
  }catch(e){el('subCandidateInfo').textContent=e.message;el('subConfirm').disabled=false;status(e.message,'error');}finally{state.loading=false;}}
  
 async function cancelDuty(h){if(state.loading)return;const reason=window.prompt(`Reason for cancelling substitute assignment #${h.substitute_assignment_id}:`);if(reason===null)return;
  if(reason.trim().length<5){status('Cancellation reason must have at least five characters.','error');return;}
  if(!window.confirm('Cancel this substitute duty? The original timetable will remain unchanged.'))return;
  state.loading=true;try{await api('POST',{action:'cancel',period_id:state.period,substitute_assignment_id:h.substitute_assignment_id,cancellation_reason:reason.trim(),csrf_token:state.csrf});
- await load();status('Substitute duty cancelled. Historical record retained.','success');
- window.BCPNotifications?.notify({
-   type: 'info',
-   title: 'Substitute duty cancelled',
-   message: `Substitute assignment #${h.substitute_assignment_id} was cancelled. Historical record was retained.`,
-   url: `${window.location.pathname}${window.location.search}`
- });}catch(e){status(e.message,'error');}finally{state.loading=false;}}
+ await load();status('Substitute duty cancelled. Historical record retained.','success');}catch(e){status(e.message,'error');}finally{state.loading=false;}}
  
 el('subRefresh').addEventListener('click',load);
 el('subPeriod').addEventListener('change',()=>{el('subProgram').replaceChildren();el('subProgram').dispatchEvent(new Event('change'));load();});

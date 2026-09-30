@@ -377,10 +377,10 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             <a href="<?= $APP_ROOT ?>dashboard/dashboard.php" title="Go to Dashboard">
                 <img src="<?= $APP_ROOT ?>assets/images/BCP_LOGO.png" alt="BCP Logo" class="sidebar-logo-img" />
             </a>
-            <span class="sidebar-notif" id="bellBtn" title="Notifications">
-                <i class="fa-solid fa-bell"></i>
-                <span class="sidebar-notif-badge" id="bellBadge"></span>
-            </span>
+            <button type="button" class="sidebar-notif" id="bellBtn" title="Notifications" aria-label="Open notifications" aria-expanded="false" aria-controls="bcpNotificationCenter">
+                <i class="fa-solid fa-bell" aria-hidden="true"></i>
+                <span class="sidebar-notif-badge" id="bellBadge" aria-hidden="true"></span>
+            </button>
         </div>
     </div>
 
@@ -543,6 +543,26 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
 
 <!-- Mobile/Tablet Background Overlay -->
 <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+<!-- Shared Facebook-style notification center -->
+<link rel="stylesheet" href="<?= $APP_ROOT ?>assets/css/notifications.css">
+<section class="bcp-notification-center" id="bcpNotificationCenter" aria-label="Notifications" hidden>
+    <div class="bcp-notification-center__header">
+        <div>
+            <h2>Notifications</h2>
+            <p id="bcpNotificationSummary">You're all caught up.</p>
+        </div>
+        <button type="button" class="bcp-notification-center__mark" id="bcpNotificationMarkAll">Mark all as read</button>
+    </div>
+    <div class="bcp-notification-center__list" id="bcpNotificationList"></div>
+    <div class="bcp-notification-center__empty" id="bcpNotificationEmpty">
+        <span class="bcp-notification-center__empty-icon"><i class="fa-regular fa-bell" aria-hidden="true"></i></span>
+        <strong>No notifications yet</strong>
+        <span>Completed scheduling actions will appear here.</span>
+    </div>
+</section>
+
+<div class="bcp-toast-stack" id="bcpToastStack" aria-live="polite" aria-atomic="false"></div>
 
 <!-- ============================================================
      SHARED SIDEBAR JAVASCRIPT
@@ -709,5 +729,392 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         } else {
             initSidebar();
         }
+    })();
+</script>
+
+<script>
+    (() => {
+        'use strict';
+
+        const bell = document.getElementById('bellBtn');
+        const badge = document.getElementById('bellBadge');
+        const panel = document.getElementById('bcpNotificationCenter');
+        const list = document.getElementById('bcpNotificationList');
+        const empty = document.getElementById('bcpNotificationEmpty');
+        const summary = document.getElementById('bcpNotificationSummary');
+        const markAll = document.getElementById('bcpNotificationMarkAll');
+        const toastStack = document.getElementById('bcpToastStack');
+
+        if (!bell || !badge || !panel || !list || !empty || !summary || !markAll || !toastStack) {
+            return;
+        }
+
+        const notificationApi = <?= json_encode($APP_ROOT . 'api/notifications.php', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        const csrfToken = <?= json_encode(function_exists('authCsrf') ? authCsrf() : '', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        let notifications = [];
+        let unreadTotal = 0;
+        let refreshInFlight = null;
+
+        function normaliseType(type) {
+            return ['success', 'info', 'warning', 'error'].includes(type) ? type : 'info';
+        }
+
+        function safeUrl(value) {
+            if (!value) return '';
+            try {
+                const url = new URL(String(value), window.location.origin);
+                if (url.origin !== window.location.origin) return '';
+                return `${url.pathname}${url.search}${url.hash}`;
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function relativeTime(iso) {
+            const timestamp = Date.parse(iso);
+            if (!Number.isFinite(timestamp)) return 'Just now';
+
+            const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+            if (seconds < 45) return 'Just now';
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+
+            return new Intl.DateTimeFormat('en-PH', {
+                month: 'short',
+                day: 'numeric'
+            }).format(new Date(timestamp));
+        }
+
+        function iconClass(type) {
+            switch (type) {
+                case 'success': return 'fa-solid fa-check';
+                case 'warning': return 'fa-solid fa-triangle-exclamation';
+                case 'error': return 'fa-solid fa-xmark';
+                default: return 'fa-solid fa-bell';
+            }
+        }
+
+        function updateBadge() {
+            const count = Math.max(0, Number(unreadTotal) || 0);
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.classList.toggle('has-notif', count > 0);
+            bell.classList.toggle('has-notif', count > 0);
+            bell.setAttribute('aria-label', count > 0 ? `Open notifications, ${count} unread` : 'Open notifications');
+            summary.textContent = count > 0 ? `${count} unread notification${count === 1 ? '' : 's'}` : "You're all caught up.";
+            markAll.disabled = count === 0;
+        }
+
+        async function apiRequest(url, options = {}) {
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+                    ...(options.headers || {})
+                },
+                ...options
+            });
+
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (_) {
+                throw new Error('Notification service returned an invalid response.');
+            }
+
+            if (!response.ok || data?.success !== true) {
+                throw new Error(data?.message || data?.status || 'Notification request failed.');
+            }
+
+            return data;
+        }
+
+        async function apiPost(payload) {
+            return apiRequest(notificationApi, {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...payload,
+                    csrf_token: csrfToken
+                })
+            });
+        }
+
+        function createNotificationRow(item) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = `bcp-notification-item${item.read ? '' : ' is-unread'}`;
+            row.dataset.notificationId = String(item.id);
+
+            const icon = document.createElement('span');
+            icon.className = `bcp-notification-item__icon is-${normaliseType(item.type)}`;
+            const iconNode = document.createElement('i');
+            iconNode.className = iconClass(normaliseType(item.type));
+            iconNode.setAttribute('aria-hidden', 'true');
+            icon.appendChild(iconNode);
+
+            const body = document.createElement('span');
+            body.className = 'bcp-notification-item__body';
+
+            const title = document.createElement('strong');
+            title.textContent = String(item.title || 'Notification');
+
+            const message = document.createElement('span');
+            message.className = 'bcp-notification-item__message';
+            message.textContent = String(item.message || '');
+
+            const time = document.createElement('span');
+            time.className = 'bcp-notification-item__time';
+            time.textContent = relativeTime(item.createdAt);
+
+            body.append(title, message, time);
+            row.append(icon, body);
+
+            if (!item.read) {
+                const dot = document.createElement('span');
+                dot.className = 'bcp-notification-item__dot';
+                dot.setAttribute('aria-hidden', 'true');
+                row.appendChild(dot);
+            }
+
+            row.addEventListener('click', async () => {
+                try {
+                    if (!item.read) {
+                        await markRead(item.id);
+                    }
+                } finally {
+                    closePanel();
+                    const destination = safeUrl(item.url);
+                    if (destination) {
+                        window.location.href = destination;
+                    }
+                }
+            });
+
+            return row;
+        }
+
+        function render() {
+            list.replaceChildren();
+            empty.hidden = notifications.length > 0;
+            notifications.forEach(item => list.appendChild(createNotificationRow(item)));
+            updateBadge();
+        }
+
+        async function refresh() {
+            if (refreshInFlight) return refreshInFlight;
+
+            refreshInFlight = (async () => {
+                try {
+                    const data = await apiRequest(`${notificationApi}?action=list&limit=30`);
+                    notifications = Array.isArray(data.notifications) ? data.notifications : [];
+                    unreadTotal = Number(data.unread_count) || 0;
+                    render();
+                    return notifications;
+                } catch (error) {
+                    console.warn('BCP notifications unavailable:', error);
+                    summary.textContent = 'Notification service unavailable.';
+                    return notifications;
+                } finally {
+                    refreshInFlight = null;
+                }
+            })();
+
+            return refreshInFlight;
+        }
+
+        async function markRead(id) {
+            const item = notifications.find(value => Number(value.id) === Number(id));
+            if (!item || item.read) return;
+
+            item.read = true;
+            unreadTotal = Math.max(0, unreadTotal - 1);
+            render();
+
+            try {
+                await apiPost({
+                    action: 'read',
+                    notification_id: Number(id)
+                });
+            } catch (error) {
+                console.warn('Could not mark notification as read:', error);
+                await refresh();
+            }
+        }
+
+        async function markAllRead() {
+            if (unreadTotal <= 0) return;
+
+            notifications = notifications.map(item => ({ ...item, read: true }));
+            unreadTotal = 0;
+            render();
+
+            try {
+                await apiPost({ action: 'read_all' });
+            } catch (error) {
+                console.warn('Could not mark all notifications as read:', error);
+                await refresh();
+            }
+        }
+
+        function positionPanel() {
+            const rect = bell.getBoundingClientRect();
+            const panelWidth = Math.min(380, window.innerWidth - 24);
+            const gap = 10;
+            let left = rect.right + 12;
+
+            if (left + panelWidth > window.innerWidth - 12) {
+                left = Math.max(12, rect.right - panelWidth);
+            }
+
+            const top = Math.min(window.innerHeight - 90, rect.bottom + gap);
+            panel.style.setProperty('--bcp-notification-left', `${Math.round(left)}px`);
+            panel.style.setProperty('--bcp-notification-top', `${Math.round(top)}px`);
+        }
+
+        function openPanel() {
+            positionPanel();
+            panel.hidden = false;
+            bell.setAttribute('aria-expanded', 'true');
+            void refresh();
+        }
+
+        function closePanel() {
+            panel.hidden = true;
+            bell.setAttribute('aria-expanded', 'false');
+        }
+
+        function showToast(item) {
+            const toast = document.createElement('article');
+            toast.className = `bcp-notification-toast is-${normaliseType(item.type)}`;
+            toast.setAttribute('role', item.type === 'error' ? 'alert' : 'status');
+
+            const icon = document.createElement('span');
+            icon.className = 'bcp-notification-toast__icon';
+            const iconNode = document.createElement('i');
+            iconNode.className = iconClass(normaliseType(item.type));
+            iconNode.setAttribute('aria-hidden', 'true');
+            icon.appendChild(iconNode);
+
+            const body = document.createElement('div');
+            body.className = 'bcp-notification-toast__body';
+
+            const eyebrow = document.createElement('span');
+            eyebrow.className = 'bcp-notification-toast__eyebrow';
+            eyebrow.textContent = 'BCP Scheduling';
+
+            const title = document.createElement('strong');
+            title.textContent = String(item.title || 'Notification');
+
+            const message = document.createElement('span');
+            message.textContent = String(item.message || '');
+
+            body.append(eyebrow, title, message);
+
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'bcp-notification-toast__close';
+            close.setAttribute('aria-label', 'Dismiss notification');
+            close.innerHTML = '&times;';
+
+            toast.append(icon, body, close);
+            toastStack.appendChild(toast);
+
+            let timer = window.setTimeout(remove, 6500);
+
+            function remove() {
+                window.clearTimeout(timer);
+                toast.classList.add('is-leaving');
+                window.setTimeout(() => toast.remove(), 220);
+            }
+
+            close.addEventListener('click', remove);
+            toast.addEventListener('mouseenter', () => window.clearTimeout(timer));
+            toast.addEventListener('mouseleave', () => {
+                timer = window.setTimeout(remove, 2500);
+            });
+        }
+
+        async function notify({ title = 'Notification', message = '', type = 'info', url = '' } = {}) {
+            const draft = {
+                id: 0,
+                title: String(title).trim() || 'Notification',
+                message: String(message).trim(),
+                type: normaliseType(type),
+                url: safeUrl(url),
+                createdAt: new Date().toISOString(),
+                read: false
+            };
+
+            // Toast appears immediately so notification storage never delays the completed action UI.
+            showToast(draft);
+
+            try {
+                const data = await apiPost({
+                    action: 'create',
+                    title: draft.title,
+                    message: draft.message,
+                    type: draft.type,
+                    url: draft.url
+                });
+
+                const item = data.notification;
+                if (item && Number(item.id) > 0) {
+                    notifications = [item, ...notifications.filter(value => Number(value.id) !== Number(item.id))].slice(0, 30);
+                    unreadTotal += 1;
+                    render();
+                    return item.id;
+                }
+            } catch (error) {
+                console.warn('Notification toast shown, but database persistence failed:', error);
+            }
+
+            return null;
+        }
+
+        bell.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            panel.hidden ? openPanel() : closePanel();
+        });
+
+        markAll.addEventListener('click', event => {
+            event.preventDefault();
+            void markAllRead();
+        });
+
+        document.addEventListener('click', event => {
+            if (!panel.hidden && !panel.contains(event.target) && !bell.contains(event.target)) {
+                closePanel();
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !panel.hidden) {
+                closePanel();
+                bell.focus();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!panel.hidden) positionPanel();
+        }, { passive: true });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) void refresh();
+        });
+
+        window.setInterval(() => {
+            if (!document.hidden) void refresh();
+        }, 45000);
+
+        window.BCPNotifications = Object.freeze({
+            notify,
+            markAllRead,
+            refresh
+        });
+
+        void refresh();
     })();
 </script>

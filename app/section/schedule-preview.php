@@ -909,6 +909,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             ).toFixed(1)}s`
                     );
 
+                    window.BCPNotifications?.notify({
+                        type: "success",
+                        title: "Schedule generated",
+                        message: `${code} ${p.academic_year} · Semester ${p.semester} finished in ${Number(result.solve_seconds).toFixed(1)}s with AUDIT_PASSED. Review the timetable before saving.`,
+                        url: `${window.location.pathname}${window.location.search}`
+                    });
+
                     if (
                         result.save_ready_demo === true &&
                         typeof result.save_token ===
@@ -983,6 +990,12 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     saveButton.hidden = true;
                     await loadCatalog(periodId, programCode, true);
                     setStatus(`Saved DEMO batch #${saved.batch_id} successfully. The ACTIVE saved timetable is now displayed.`, "success");
+                    window.BCPNotifications?.notify({
+                        type: "success",
+                        title: "Schedule saved",
+                        message: `${programCode} DEMO batch #${saved.batch_id} is now the ACTIVE saved timetable.`,
+                        url: `${window.location.pathname}${window.location.search}`
+                    });
                 } catch (err) {
                     setStatus(readableError(err, "The timetable could not be saved. The preview remains unsaved."), "error");
                 } finally {

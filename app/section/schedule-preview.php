@@ -73,6 +73,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         <h1>Class Timetable<span class="bcp-preview__title-dot">.</span></h1>
                         <p id="bcpPeriodDescription">Choose a program and academic period.</p>
                     </div>
+                    <div class="bcp-preview__badge" title="This module is currently in testing mode">DEMO ENVIRONMENT</div>
                 </header>
 
                 <!-- SELECTORS -->
@@ -104,7 +105,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     <div class="bcp-preview__toolbar">
                         <div class="bcp-preview__toolbar-text">
                             <h2 id="bcpActionTitle">Timetable Workspace</h2>
-                            <p id="bcpActionDescription">Choose a program to view a saved timetable or generate a preview.</p>
+                            <p id="bcpActionDescription">Choose a program to view a saved timetable or generate a DEMO preview.</p>
                         </div>
                         <div class="bcp-preview__btn-group">
                             <button type="button" id="bcpRegenerateButton" class="bcp-preview__btn-tertiary" title="Create a new preview without overriding the active batch" hidden disabled>
@@ -114,10 +115,10 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Schedule
                             </button>
                             <button type="button" id="bcpSaveButton" class="bcp-preview__btn-primary" title="Commit this timetable to the database" hidden disabled>
-                                <i class="fa-solid fa-floppy-disk"></i> Save  Schedule
+                                <i class="fa-solid fa-floppy-disk"></i> Save DEMO Schedule
                             </button>
                             <button type="button" id="bcpReplaceButton" class="bcp-preview__btn-primary bcp-preview__btn-warning" title="Overwrite the currently active batch" hidden disabled>
-                                <i class="fa-solid fa-triangle-exclamation"></i> Confirm &amp; Replace 
+                                <i class="fa-solid fa-triangle-exclamation"></i> Confirm &amp; Replace DEMO
                             </button>
                         </div>
                     </div>
@@ -188,7 +189,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 <div id="bcpEmptyState" class="bcp-preview__empty" aria-live="polite">
                     <div class="bcp-preview__empty-icon"><i class="fa-regular fa-calendar-xmark"></i></div>
                     <h2>Select a program</h2>
-                    <p id="bcpEmptyMessage">Saved schedules will appear here. Only BSIT generation has been configured and tested.</p>
+                    <p id="bcpEmptyMessage">Saved schedules will appear here. Only BSIT DEMO generation has been configured and tested.</p>
                 </div>
             </div>
         </main>
@@ -601,13 +602,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         el("bcpProgramNote").textContent = `ACTIVE batch #${saved.batch.batch_id} · ${saved.saved_meetings} stored meetings · read-only view.`;
                         setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
                     } else if (saved.status === "NO_SAVED_SCHEDULE") {
-                        const eligible = selectedProgram.can_generate === true;
+                        const eligible = selectedProgram.can_generate_demo === true;
                         generateButton.hidden = !eligible;
                         el("bcpProgramNote").textContent = eligible ?
-                            `${selectedProgram.demo_sections} sections · BSIT scheduling configuration is available.` :
+                            `${selectedProgram.demo_sections} DEMO sections · BSIT scheduling configuration is available.` :
                             "No saved timetable. Generation is disabled until inputs are ready.";
                         el("bcpActionDescription").textContent = eligible ?
-                            "Generate a new BSIT  timetable, review it, then confirm saving." :
+                            "Generate a new BSIT DEMO timetable, review it, then confirm saving." :
                             "Saved timetable viewing is available. Generation is not configured yet.";
                         setEmpty(eligible ? "Click Generate Schedule to create a new preview." : "No saved timetable.");
                         setStatus(eligible ? "Ready to generate schedule." : "No schedule available.", "info");
@@ -662,7 +663,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             async function generateSchedule() {
                 if (
                     busy ||
-                    selectedProgram?.can_generate !== true ||
+                    selectedProgram?.can_generate_demo !== true ||
                     selectedProgram.program_code !== "BSIT"
                 ) {
                     return;
@@ -916,7 +917,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     });
 
                     if (
-                        result.save_ready_ === true &&
+                        result.save_ready_demo === true &&
                         typeof result.save_token ===
                         "string"
                     ) {
@@ -966,13 +967,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
             async function saveSchedule() {
                 if (busy || !saveToken || !selectedProgram || selectedProgram.program_code !== "BSIT") return;
-                if (!window.confirm("Save this reviewed timetable?")) return;
+                if (!window.confirm("Save this reviewed DEMO timetable?")) return;
                 const token = saveToken;
                 const periodId = selectedPeriod()?.academic_period_id;
                 const programCode = selectedProgram.program_code;
                 setBusy(true);
                 saveButton.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…`;
-                setStatus("Saving the timetable…", "loading");
+                setStatus("Saving the DEMO timetable…", "loading");
                 try {
                     const saved = await getJson("../api/save-schedule.php", {
                         method: "POST",
@@ -984,21 +985,21 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             confirm: true
                         })
                     });
-                    if (saved.status !== "SCHEDULE_SAVED") throw new Error("Save failed.");
+                    if (saved.status !== "DEMO_SCHEDULE_SAVED") throw new Error("Save failed.");
                     saveToken = null;
                     saveButton.hidden = true;
                     await loadCatalog(periodId, programCode, true);
-                    setStatus(`Saved batch #${saved.batch_id} successfully. The ACTIVE saved timetable is now displayed.`, "success");
+                    setStatus(`Saved DEMO batch #${saved.batch_id} successfully. The ACTIVE saved timetable is now displayed.`, "success");
                     window.BCPNotifications?.notify({
                         type: "success",
                         title: "Schedule saved",
-                        message: `${programCode} batch #${saved.batch_id} is now the ACTIVE saved timetable.`,
+                        message: `${programCode} DEMO batch #${saved.batch_id} is now the ACTIVE saved timetable.`,
                         url: `${window.location.pathname}${window.location.search}`
                     });
                 } catch (err) {
                     setStatus(readableError(err, "The timetable could not be saved. The preview remains unsaved."), "error");
                 } finally {
-                    saveButton.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save  Schedule`;
+                    saveButton.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save DEMO Schedule`;
                     setBusy(false);
                 }
             }
@@ -1052,7 +1053,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             batch_id: batchId
                         })
                     });
-                    if (replacement.status !== "PREVIEW_GENERATED") throw new Error("Replacement failed.");
+                    if (replacement.status !== "DEMO_PREVIEW_GENERATED") throw new Error("Replacement failed.");
                     replaceToken = replacement.replace_token;
                     showAssignments(replacement.assignments);
                     showSummary(replacement.sections, replacement.returned_meetings,
@@ -1085,7 +1086,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 const periodId = selectedPeriod()?.academic_period_id;
                 setBusy(true);
                 replaceButton.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Replacing…`;
-                setStatus("Committing the replacement…", "loading");
+                setStatus("Committing the DEMO replacement…", "loading");
                 try {
                     const saved = await getJson("../api/replacement-save.php", {
                         method: "POST",
@@ -1097,7 +1098,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             confirm: true
                         })
                     });
-                    if (saved.status !== "SCHEDULE_REPLACED") throw new Error("Replacement API failed.");
+                    if (saved.status !== "DEMO_SCHEDULE_REPLACED") throw new Error("Replacement API failed.");
                     replaceToken = null;
                     await loadCatalog(periodId, "BSIT", true);
                     setStatus("Replacement saved successfully. The new ACTIVE BSIT timetable is now displayed.", "success");
@@ -1110,7 +1111,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 } catch (err) {
                     setStatus(readableError(err, "The replacement could not be saved. The previous ACTIVE batch remains unchanged."), "error");
                 } finally {
-                    replaceButton.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace `;
+                    replaceButton.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO`;
                     setBusy(false);
                 }
             }

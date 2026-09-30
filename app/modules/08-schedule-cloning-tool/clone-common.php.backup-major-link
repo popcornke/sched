@@ -1073,36 +1073,12 @@ function cloneBuildProposals(
     }
 
 
-    $sourceMajorLinkCount =
-        cloneTargetMajorLinkCount(
-            $db,
-            (int) $source['academic_period_id'],
-            (int) $source['program_id']
-        );
-
-
     $majorLinkCount =
         cloneTargetMajorLinkCount(
             $db,
             (int) $target['academic_period_id'],
             (int) $source['program_id']
         );
-
-
-    if (
-        $sourceMajorLinkCount > 0
-        && $majorLinkCount === 0
-    ) {
-        cloneAddIssue(
-            $globalIssues,
-            'TARGET_MAJOR_LINKS_NOT_PREPARED',
-            (
-                'The source timetable depends on Cluster / Major '
-                . 'section relationships, but the target period '
-                . 'has no prepared Cluster / Major links for this program.'
-            )
-        );
-    }
 
 
     $examCount =

@@ -7,15 +7,59 @@ declare(strict_types=1);
  * Central session and access protection.
  */
 
-function authLoginUrl(): string
+function authBasePath(): string
 {
-    $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+    $scriptName = str_replace(
+        '\\',
+        '/',
+        $_SERVER['SCRIPT_NAME'] ?? ''
+    );
 
-    if (str_starts_with($scriptName, '/BCP_SCHEDULING/')) {
-        return '/BCP_SCHEDULING/index.php';
+    $appPosition = strpos(
+        $scriptName,
+        '/app/'
+    );
+
+    if ($appPosition !== false) {
+        return rtrim(
+            substr(
+                $scriptName,
+                0,
+                $appPosition
+            ),
+            '/'
+        );
     }
 
-    return '/index.php';
+    $directory = str_replace(
+        '\\',
+        '/',
+        dirname($scriptName)
+    );
+
+    if (
+        $directory === '/'
+        || $directory === '.'
+    ) {
+        return '';
+    }
+
+    return rtrim(
+        $directory,
+        '/'
+    );
+}
+
+
+function authLoginUrl(): string
+{
+    return authBasePath() . '/index.php';
+}
+
+
+function authLogoutUrl(): string
+{
+    return authBasePath() . '/logout.php';
 }
 const SESSION_IDLE_LIMIT = 1800;    // 30 minutes
 const SESSION_MAX_LIFETIME = 28800; // 8 hours

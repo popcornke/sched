@@ -22,7 +22,11 @@ authClear();
 
 header('Clear-Site-Data: "cache"');
 
-// After a successful logout, always return to the sched landing page.
-header('Location: /sched/index.php', true, 303);
+// Return to the correct login page in both local and hosted environments.
+header(
+    'Location: ' . authLoginUrl(),
+    true,
+    303
+);
 
 exit;

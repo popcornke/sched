@@ -352,31 +352,36 @@ $db = null;
 
 try {
 
-    /* -----------------------------------------------------
-       Local DEMO safeguard
-    ----------------------------------------------------- */
+    /*
+|--------------------------------------------------------------------------
+| Clone Save access safeguard
+|--------------------------------------------------------------------------
+*/
 
-    if (
-        !in_array(
-            $_SERVER[
-                'REMOTE_ADDR'
-            ] ?? '',
-            [
-                '127.0.0.1',
-                '::1',
-            ],
-            true
-        )
-    ) {
-        csFail(
-            403,
-            'LOCAL_DEMO_ONLY',
-            (
-                'Schedule clone saving is currently '
-                . 'available only from localhost.'
-            )
-        );
-    }
+$cloneRemoteEnabled = filter_var(
+    getenv('SCHEDULE_CLONING_REMOTE_ENABLED') ?: 'false',
+    FILTER_VALIDATE_BOOLEAN
+);
+
+$isLocalRequest = in_array(
+    $_SERVER['REMOTE_ADDR'] ?? '',
+    [
+        '127.0.0.1',
+        '::1',
+    ],
+    true
+);
+
+if (
+    !$isLocalRequest
+    && !$cloneRemoteEnabled
+) {
+    csFail(
+        403,
+        'REMOTE_CLONING_DISABLED',
+        'Schedule clone saving is not enabled for remote access.'
+    );
+}
 
 
     /* -----------------------------------------------------

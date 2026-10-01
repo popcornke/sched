@@ -1117,31 +1117,36 @@ function ccAssessment(
 
 try {
 
-    /*
-    |--------------------------------------------------------------------------
-    | Local development safeguard
-    |--------------------------------------------------------------------------
-    */
+   /*
+|--------------------------------------------------------------------------
+| Schedule cloning access safeguard
+|--------------------------------------------------------------------------
+*/
 
-    if (
-        !in_array(
-            $_SERVER['REMOTE_ADDR'] ?? '',
-            [
-                '127.0.0.1',
-                '::1',
-            ],
-            true
-        )
-    ) {
-        ccFail(
-            403,
-            'LOCAL_DEMO_ONLY',
-            (
-                'Schedule cloning DEMO is currently '
-                . 'available only from localhost.'
-            )
-        );
-    }
+$cloneRemoteEnabled = filter_var(
+    getenv('SCHEDULE_CLONING_REMOTE_ENABLED') ?: 'false',
+    FILTER_VALIDATE_BOOLEAN
+);
+
+$isLocalRequest = in_array(
+    $_SERVER['REMOTE_ADDR'] ?? '',
+    [
+        '127.0.0.1',
+        '::1',
+    ],
+    true
+);
+
+if (
+    !$isLocalRequest
+    && !$cloneRemoteEnabled
+) {
+    ccFail(
+        403,
+        'REMOTE_CLONING_DISABLED',
+        'Schedule cloning is not enabled for remote access.'
+    );
+}
 
 
     /*

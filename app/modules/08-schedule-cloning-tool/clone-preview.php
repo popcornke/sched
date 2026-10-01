@@ -131,27 +131,35 @@ function cpPositiveId(
 try {
 
     /*
-    |--------------------------------------------------------------------------
-    | Local DEMO safeguard
-    |--------------------------------------------------------------------------
-    */
+|--------------------------------------------------------------------------
+| Clone Preview access safeguard
+|--------------------------------------------------------------------------
+*/
 
-    if (
-        !in_array(
-            $_SERVER['REMOTE_ADDR'] ?? '',
-            [
-                '127.0.0.1',
-                '::1',
-            ],
-            true
-        )
-    ) {
-        cpFail(
-            403,
-            'LOCAL_DEMO_ONLY',
-            'Clone Preview is currently available only from localhost.'
-        );
-    }
+$cloneRemoteEnabled = filter_var(
+    getenv('SCHEDULE_CLONING_REMOTE_ENABLED') ?: 'false',
+    FILTER_VALIDATE_BOOLEAN
+);
+
+$isLocalRequest = in_array(
+    $_SERVER['REMOTE_ADDR'] ?? '',
+    [
+        '127.0.0.1',
+        '::1',
+    ],
+    true
+);
+
+if (
+    !$isLocalRequest
+    && !$cloneRemoteEnabled
+) {
+    cpFail(
+        403,
+        'REMOTE_CLONING_DISABLED',
+        'Clone Preview is not enabled for remote access.'
+    );
+}
 
 
     /*

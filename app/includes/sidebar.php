@@ -467,7 +467,7 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
 
         <!-- =====================================================
              MODULE 6: SPECIAL CLASS SCHEDULER
-             ===================================================== -->
+             ===================================================== 
         <div class="nav-group">
             <button type="button" class="sidebar-item <?= in_array($ACTIVE_NAV, ['special_class', 'special_preview', 'special_demo_preview', 'special_demo_test'], true) ? 'active open' : '' ?> dropdown-trigger" data-target="dropSpecial" title="Special Class Scheduler">
                 <i class="fa-solid fa-star"></i>
@@ -480,7 +480,7 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
                 <a href="<?= $APP_ROOT ?>modules/06-special-class-scheduler/special-class-demo-preview.php" class="dropdown-item">Demo Preview</a>
                 <a href="<?= $APP_ROOT ?>modules/06-special-class-scheduler/special-class-demo-test.php" class="dropdown-item">Demo Test</a>
             </div>
-        </div>
+        </div>-->
 
         <!-- =====================================================
              MODULE 7: ROOM AVAILABILITY

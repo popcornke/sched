@@ -530,8 +530,16 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         <!-- =====================================================
              LOGOUT
              ===================================================== -->
-        <form method="POST" action="/sched/logout.php" class="sidebar-logout-form">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('authCsrf') ? authCsrf() : '', ENT_QUOTES, 'UTF-8') ?>">
+<form
+    method="POST"
+    action="<?= htmlspecialchars(
+        authLogoutUrl(),
+        ENT_QUOTES,
+        'UTF-8'
+    ) ?>"
+    class="sidebar-logout-form"
+>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(function_exists('authCsrf') ? authCsrf() : '', ENT_QUOTES, 'UTF-8') ?>">
             <button type="submit" class="sidebar-logout">
                 <i class="fa-solid fa-right-from-bracket"></i>
                 <span>Logout</span>

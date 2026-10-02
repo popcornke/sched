@@ -504,7 +504,7 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
 
         <!-- =====================================================
              MODULE 9: TIME BLOCK CUSTOMIZER
-             ===================================================== -->
+             ===================================================== 
         <div class="nav-group">
             <button type="button" class="sidebar-item <?= in_array($ACTIVE_NAV, ['time_blocks', 'time_block_preview'], true) ? 'active open' : '' ?> dropdown-trigger" data-target="dropTimeBlocks" title="Time Block Customizer">
                 <i class="fa-solid fa-clock"></i>
@@ -515,7 +515,7 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
                 <a href="<?= $APP_ROOT ?>modules/09-time-block-customizer/time-block-customizer.php" class="dropdown-item">Main Tool</a>
                 <a href="<?= $APP_ROOT ?>modules/09-time-block-customizer/time-block-preview.php" class="dropdown-item">Time Block Preview</a>
             </div>
-        </div>
+        </div>-->
 
         <!-- =====================================================
              MODULE 10: CALENDAR INTEGRATION

@@ -46,6 +46,8 @@ try {
     foreach ($batchStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $saved[(int) $row['program_id']] = ['batches' => (int) $row['batches'], 'meetings' => (int) $row['meetings']];
     }
+    $supportedDemoPrograms = ['BSIT', 'BSOA'];
+
     foreach ($programs as &$program) {
         $id = (int) $program['program_id'];
         $count = $saved[$id]['batches'] ?? 0;
@@ -56,8 +58,8 @@ try {
         $program['active_batch_count'] = $count;
         $program['saved_meetings'] = $meetings;
         $program['has_saved_schedule'] = $count === 1 && $meetings > 0;
-        // Only BSIT has an implemented and tested program-specific solver configuration.
-        $program['can_generate_demo'] = $program['program_code'] === 'BSIT'
+        // Generate only for programs whose DEMO scheduling policy is implemented.
+        $program['can_generate_demo'] = in_array($program['program_code'], $supportedDemoPrograms, true)
             && $selected['period_status'] === 'DEMO'
             && $sections > 0 && $count === 0;
     }

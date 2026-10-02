@@ -189,7 +189,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 <div id="bcpEmptyState" class="bcp-preview__empty" aria-live="polite">
                     <div class="bcp-preview__empty-icon"><i class="fa-regular fa-calendar-xmark"></i></div>
                     <h2>Select a program</h2>
-                    <p id="bcpEmptyMessage">Saved schedules will appear here. Only BSIT DEMO generation has been configured and tested.</p>
+                    <p id="bcpEmptyMessage">Saved schedules will appear here. Programs with complete DEMO scheduling inputs can be generated and reviewed here.</p>
                 </div>
             </div>
         </main>
@@ -594,21 +594,24 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         showAssignments(saved.assignments);
                         originalBatch = Number(saved.batch.batch_id);
                         originalAssignments = saved.assignments;
-                        if (selectedProgram.program_code === "BSIT" && saved.batch.data_origin === "DEMO" && selectedPeriod()?.period_status === "DEMO") {
-                            regenerateButton.hidden = false;
-                        }
+                        const replacementAvailable = selectedProgram.program_code === "BSIT"
+                            && saved.batch.data_origin === "DEMO"
+                            && selectedPeriod()?.period_status === "DEMO";
+                        regenerateButton.hidden = !replacementAvailable;
                         showSummary(saved.sections, saved.saved_meetings, "SAVED · DEMO", `Batch #${saved.batch.batch_id}`);
-                        el("bcpActionDescription").textContent = "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch.";
+                        el("bcpActionDescription").textContent = replacementAvailable
+                            ? "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch."
+                            : "Saved timetable is shown in read-only mode.";
                         el("bcpProgramNote").textContent = `ACTIVE batch #${saved.batch.batch_id} · ${saved.saved_meetings} stored meetings · read-only view.`;
                         setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
                     } else if (saved.status === "NO_SAVED_SCHEDULE") {
                         const eligible = selectedProgram.can_generate_demo === true;
                         generateButton.hidden = !eligible;
                         el("bcpProgramNote").textContent = eligible ?
-                            `${selectedProgram.demo_sections} DEMO sections · BSIT scheduling configuration is available.` :
+                            `${selectedProgram.demo_sections} DEMO sections · ${selectedProgram.program_code} scheduling configuration is available.` :
                             "No saved timetable. Generation is disabled until inputs are ready.";
                         el("bcpActionDescription").textContent = eligible ?
-                            "Generate a new BSIT DEMO timetable, review it, then confirm saving." :
+                            `Generate a new ${selectedProgram.program_code} DEMO timetable, review it, then confirm saving.` :
                             "Saved timetable viewing is available. Generation is not configured yet.";
                         setEmpty(eligible ? "Click Generate Schedule to create a new preview." : "No saved timetable.");
                         setStatus(eligible ? "Ready to generate schedule." : "No schedule available.", "info");
@@ -663,8 +666,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             async function generateSchedule() {
                 if (
                     busy ||
-                    selectedProgram?.can_generate_demo !== true ||
-                    selectedProgram.program_code !== "BSIT"
+                    selectedProgram?.can_generate_demo !== true
                 ) {
                     return;
                 }
@@ -966,7 +968,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             async function saveSchedule() {
-                if (busy || !saveToken || !selectedProgram || selectedProgram.program_code !== "BSIT") return;
+                if (busy || !saveToken || !selectedProgram) return;
                 if (!window.confirm("Save this reviewed DEMO timetable?")) return;
                 const token = saveToken;
                 const periodId = selectedPeriod()?.academic_period_id;

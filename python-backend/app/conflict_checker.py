@@ -1,4 +1,4 @@
-"""Phase 3C independent, reject-only audit for BSIT DEMO timetable previews.
+"""Independent, reject-only audit for supported DEMO timetable previews.
 
 Does not call OR-Tools, modify assignments, or write to a database.
 An AUDIT_PASSED result is NOT school-wide saved-schedule clearance.
@@ -45,7 +45,7 @@ def allowed_days(section, mode):
         raise ValueError(f"Invalid demo section code {code}")
     if mode not in ("F2F", "ONLINE"):
         raise ValueError(f"Invalid delivery mode {mode}")
-    # This exception is BSIT-only; other programs require their own confirmed policy.
+    # MAJOR sections use the flexible-day policy; currently this is used by BSIT.
     if section["section_type"] == "MAJOR" and int(section["year_level"]) == 4:
         return set(DAYS)
     odd = int(code[-2:]) % 2 == 1
@@ -57,8 +57,9 @@ def _audit(payload, result):
     errors = []
     data = payload["scheduling_input"]
     program = payload.get("program", {})
-    if program.get("program_code") != "BSIT" or payload.get("data_origin") != "DEMO":
-        return ["This audit is configured for BSIT DEMO inputs only."], 0, 0
+    program_code = str(program.get("program_code", "")).upper()
+    if program_code not in {"BSIT", "BSOA"} or payload.get("data_origin") != "DEMO":
+        return [f"This audit is not configured for {program_code or 'UNKNOWN'} DEMO inputs."], 0, 0
     sections = {int(s["section_id"]): s for s in data["sections"]}
     teachers = {int(t["teacher_id"]): t for t in data["teachers"]}
     rooms = {int(r["room_id"]): r for r in data["rooms"]}
@@ -213,22 +214,57 @@ def _audit(payload, result):
         for day in f2f_days:
             daily = sorted((r for r in f2f if r["day"] == day), key=lambda r: r["start"])
             count = len(daily)
-            if kind == "REGULAR" and year == 1 and count != 3:
-                errors.append(f"Section {section['section_code']} {day}: first-year F2F count {count}, expected 3")
-            if kind == "REGULAR" and year == 2 and count not in (2, 3):
-                errors.append(f"Section {section['section_code']} {day}: second-year F2F count {count}, expected 2 or 3")
-            if kind == "REGULAR" and year == 3 and count not in (0, 3):
-                errors.append(f"Section {section['section_code']} {day}: third-year F2F count {count}, expected 0 or 3")
-            if kind == "CLUSTER" and year == 4 and count not in (0, len(f2f)):
-                errors.append(f"Cluster {section['section_code']} {day}: cluster subjects must be on one F2F day")
-            if kind == "MAJOR" and count > 1:
-                errors.append(f"Major {section['section_code']} {day}: more than one major F2F subject")
+            if program_code == "BSIT":
+                if kind == "REGULAR" and year == 1 and count != 3:
+                    errors.append(f"Section {section['section_code']} {day}: first-year F2F count {count}, expected 3")
+                if kind == "REGULAR" and year == 2 and count not in (2, 3):
+                    errors.append(f"Section {section['section_code']} {day}: second-year F2F count {count}, expected 2 or 3")
+                if kind == "REGULAR" and year == 3 and count not in (0, 3):
+                    errors.append(f"Section {section['section_code']} {day}: third-year F2F count {count}, expected 0 or 3")
+                if kind == "CLUSTER" and year == 4 and count not in (0, len(f2f)):
+                    errors.append(f"Cluster {section['section_code']} {day}: cluster subjects must be on one F2F day")
+                if kind == "MAJOR" and count > 1:
+                    errors.append(f"Major {section['section_code']} {day}: more than one major F2F subject")
+            else:
+                if kind != "REGULAR":
+                    errors.append(f"Section {section['section_code']}: unsupported {program_code} section type {kind}")
+                elif year == 3:
+                    if count not in (0, 2, 3):
+                        errors.append(
+                            f"Section {section['section_code']} {day}: third-year F2F count {count}, expected 0, 2, or 3 for 3-2 distribution"
+                        )
+                elif year == 4:
+                    if count not in (0, len(f2f)):
+                        errors.append(
+                            f"Section {section['section_code']} {day}: fourth-year F2F subjects must be on one day"
+                        )
+                else:
+                    low, rem = divmod(len(f2f), len(f2f_days))
+                    high = low + (1 if rem else 0)
+                    if count < low or count > high:
+                        errors.append(
+                            f"Section {section['section_code']} {day}: F2F count {count}, expected {low}..{high}"
+                        )
+
             if daily:
                 span = daily[-1]["end"] - daily[0]["start"]
                 total = sum(r["end"] - r["start"] for r in daily)
                 expected_gap = 30 if kind == "REGULAR" and year in (1, 2, 3) and count == 3 else 0
                 if span != total + expected_gap:
                     errors.append(f"Section {section['section_code']} {day}: F2F break/gap policy violated")
+
+    if program_code == "BSOA":
+        for section_id, section in sections.items():
+            if int(section["year_level"]) != 3 or section["section_type"] != "REGULAR":
+                continue
+            rows = per_section[section_id]
+            f2f = [r for r in rows if r["mode"] == "F2F"]
+            f2f_days = allowed_days(section, "F2F")
+            counts = sorted(sum(r["day"] == day for r in f2f) for day in f2f_days)
+            if counts != [0, 2, 3]:
+                errors.append(
+                    f"Section {section['section_code']}: third-year F2F distribution {counts}, expected [0, 2, 3] (3-2)"
+                )
 
     # Linked Cluster/Major shares students: both time overlap and mixed mode SAME DAY are forbidden.
     for link in data["major_links"]:

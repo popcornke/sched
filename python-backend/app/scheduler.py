@@ -154,7 +154,7 @@ def hours_to_slots(value):
 # ============================================
 
 def get_section_days(section_code, mode, section_type="REGULAR"):
-    """BSIT demo: major sections are flexible; regular/cluster retain odd/even."""
+    """Major sections are flexible; regular/cluster sections retain odd/even day patterns."""
     code = str(section_code)
     if len(code) != 5 or not code.isascii() or not code.isdigit() or int(code[-2:]) < 1:
         raise ValueError(f"Invalid section code: {code}")
@@ -433,10 +433,12 @@ def solve_schedule(payload):
             missing_fields=missing_fields,
         )
 
-    if payload.get("program", {}).get("program_code") != "BSIT":
+    program_code = str(payload.get("program", {}).get("program_code", "")).upper()
+    supported_programs = {"BSIT", "BSOA"}
+    if program_code not in supported_programs:
         return failure(
             "PROGRAM_POLICY_NOT_CONFIGURED",
-            "Only BSIT-specific scheduling policies are configured in this demo solver.",
+            f"Scheduling policy is not configured for program {program_code or 'UNKNOWN'}.",
         )
 
     if payload.get("data_origin") != "DEMO":
@@ -722,8 +724,7 @@ def solve_schedule(payload):
             ):
                 continue
 
-            # Do not assign BSIT to rooms
-            # restricted to another program.
+            # Do not assign a section to rooms restricted to another program.
 
             room_program = room.get(
                 "program_id"
@@ -1381,7 +1382,7 @@ def solve_schedule(payload):
         for other in pair[1:]:
             model.Add(other["teacher_var"] == pair[0]["teacher_var"])
 
-    # BSIT fourth-year MAJOR: F2F and ONLINE cannot occur on the same day.
+    # Fourth-year MAJOR policy (used by BSIT): F2F and ONLINE cannot occur on the same day.
     for sec_id, sec in sections.items():
         if sec["section_type"] != "MAJOR" or int(sec["year_level"]) != 4:
             continue
@@ -1745,105 +1746,79 @@ def solve_schedule(payload):
                 continue
 
             # ====================================
-            # 15.3 FIRST YEAR
+            # 15.3 PROGRAM DAILY DISTRIBUTION
             # ====================================
 
-            # 9 F2F subjects:
-            # 3 subjects on each F2F day.
+            if program_code == "BSIT":
 
-            if year_level == 1:
+                # Preserve the proven BSIT distribution policy.
+                if year_level == 1:
+                    model.Add(count == 3)
 
-                model.Add(
-                    count == 3
-                )
+                elif year_level == 2:
+                    model.Add(count >= 2)
+                    model.Add(count <= 3)
 
-            # ====================================
-            # 15.4 SECOND YEAR
-            # ====================================
+                elif year_level == 3:
+                    active_day = model.NewBoolVar(
+                        f"third_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-            # 8 F2F subjects:
-            #
-            # 3-3-2
-            # 3-2-3
-            # 2-3-3
+                elif year_level == 4 and section_type == "CLUSTER":
+                    active_day = model.NewBoolVar(
+                        f"fourth_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-            elif year_level == 2:
+            else:
 
-                model.Add(
-                    count >= 2
-                )
+                # Generic REGULAR-program policy (currently BSOA).
+                if section_type != "REGULAR":
+                    return failure(
+                        "PROGRAM_POLICY_NOT_CONFIGURED",
+                        f"{program_code} section type {section_type} is not configured.",
+                    )
 
-                model.Add(
-                    count <= 3
-                )
+                if year_level == 3:
+                    # BSOA 3rd year Semester 1 has five F2F subjects.
+                    # Use exactly TWO F2F days: one day with 3 subjects and
+                    # one day with 2 subjects (3-2), leaving the third F2F day empty.
+                    # The existing break rule adds the 30-minute break only on
+                    # the day that contains exactly 3 F2F subjects.
+                    is_three = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_three"
+                    )
+                    is_two = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_two"
+                    )
+                    is_zero = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_zero"
+                    )
+                    model.AddExactlyOne(is_three, is_two, is_zero)
+                    model.Add(count == 3).OnlyEnforceIf(is_three)
+                    model.Add(count == 2).OnlyEnforceIf(is_two)
+                    model.Add(count == 0).OnlyEnforceIf(is_zero)
 
-            # ====================================
-            # 15.5 THIRD YEAR
-            # ====================================
-
-            # 6 F2F subjects:
-            #
-            # Two days containing 3 subjects.
-            # One vacant F2F day.
-
-            elif year_level == 3:
-
-                active_day = model.NewBoolVar(
-
-                    f"third_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-            # ====================================
-            # 15.6 FOURTH-YEAR CLUSTER
-            # ====================================
-
-            elif (
-                year_level == 4
-                and section_type == "CLUSTER"
-            ):
-
-                active_day = model.NewBoolVar(
-
-                    f"fourth_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == len(lessons)
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
+                elif year_level == 4:
+                    # BSOA 4th year Semester 1 has three F2F subjects.
+                    # Keep the whole three-subject block on ONE allowed F2F day
+                    # (6 class hours total) instead of forcing a 1-1-1 split.
+                    active_day = model.NewBoolVar(
+                        f"generic_fourth_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                else:
+                    # BSOA Years 1-2 keep a balanced three-day distribution:
+                    # Year 1 (8 subjects) -> 3-3-2
+                    # Year 2 (7 subjects) -> 3-2-2
+                    low, remainder = divmod(len(lessons), len(f2f_days))
+                    high = low + (1 if remainder else 0)
+                    model.Add(count >= low)
+                    model.Add(count <= high)
 
             # ====================================
             # 16. DAILY BREAK / GAP CONSTRAINTS
@@ -1974,163 +1949,65 @@ def solve_schedule(payload):
             )
 
             # ====================================
-            # 16.1 FIRST YEAR BREAK
+            # 16.1 PROGRAM BREAK / GAP POLICY
             # ====================================
 
-            # Exactly one 30-minute gap.
-            #
-            # The gap must occur between
-            # consecutive subjects.
+            if program_code == "BSIT":
 
-            if year_level == 1:
+                # Preserve the proven BSIT break policy.
+                if year_level == 1:
+                    model.Add(latest - earliest == total_duration + 1)
 
-                model.Add(
+                elif year_level == 2:
+                    three_subjects = model.NewBoolVar(
+                        f"second_year_section_{section_id}_day_{day_index}_three_subjects"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(three_subjects)
+                    model.Add(count == 2).OnlyEnforceIf(three_subjects.Not())
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(three_subjects)
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(three_subjects.Not())
 
-                    latest - earliest
-                    == total_duration + 1
+                elif year_level == 3:
+                    active_day = model.NewBoolVar(
+                        f"third_year_break_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(active_day)
 
-                )
+                elif year_level == 4 and section_type == "CLUSTER":
+                    active_day = model.NewBoolVar(
+                        f"fourth_year_break_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(active_day)
 
-            # ====================================
-            # 16.2 SECOND YEAR BREAK
-            # ====================================
+            else:
 
-            elif year_level == 2:
-
-                three_subjects = model.NewBoolVar(
-
-                    f"second_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}"
-                    f"_three_subjects",
-
-                )
-
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    three_subjects
-                )
-
-                model.Add(
-
-                    count == 2
-
-                ).OnlyEnforceIf(
-                    three_subjects.Not()
-                )
-
-                # Three subjects:
-                # one 30-minute break.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration + 1
-
-                ).OnlyEnforceIf(
-                    three_subjects
-                )
-
-                # Two subjects:
-                # no scheduled break.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration
-
-                ).OnlyEnforceIf(
-                    three_subjects.Not()
-                )
-
-            # ====================================
-            # 16.3 THIRD YEAR BREAK
-            # ====================================
-
-            elif year_level == 3:
-
+                # Generic REGULAR-program policy (currently BSOA):
+                # exactly three F2F subjects on Years 1-3 get one 30-minute
+                # break; other active F2F days are consecutive. Fourth year
+                # never receives a scheduled break.
                 active_day = model.NewBoolVar(
-
-                    f"third_year_break_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
+                    f"generic_section_{section_id}_day_{day_index}_active"
                 )
+                model.Add(count >= 1).OnlyEnforceIf(active_day)
+                model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-                # One 30-minute break on
-                # a three-subject F2F day.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration + 1
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-            # ====================================
-            # 16.4 FOURTH YEAR: NO BREAK
-            # ====================================
-
-            elif (
-                year_level == 4
-                and section_type == "CLUSTER"
-            ):
-
-                active_day = model.NewBoolVar(
-
-                    f"fourth_year_break_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == len(lessons)
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-                # Classes must be consecutive.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
+                if year_level in (1, 2, 3):
+                    three_subjects = model.NewBoolVar(
+                        f"generic_section_{section_id}_day_{day_index}_three_subjects"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(three_subjects)
+                    model.Add(count != 3).OnlyEnforceIf(three_subjects.Not())
+                    model.AddImplication(three_subjects, active_day)
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(three_subjects)
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(
+                        [active_day, three_subjects.Not()]
+                    )
+                else:
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(active_day)
 
     # Phase 3C: balance Years 1-3 ONLINE meetings across their three online days.
     # Phase 4E: retain the day flags for a SOFT compact-online objective.
@@ -2170,7 +2047,7 @@ def solve_schedule(payload):
             model.Add(sum(flags) >= low)
             model.Add(sum(flags) <= high)
 
-            # For normal BSIT Years 1-3, low >= 1, so every online day is active.
+            # When low >= 1, every online day is active.
             # A future curriculum with fewer than three online lessons skips
             # this optional optimization rather than creating an invalid span.
             if low == 0:

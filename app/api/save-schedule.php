@@ -131,8 +131,10 @@ try {
     $program = $preview['program'];
     $period = $preview['academic_period'];
     $result = $preview['result'];
-    if (($program['program_code'] ?? null) !== 'BSIT' || ($period['period_status'] ?? null) !== 'DEMO') {
-        rejectSave(403, 'BSIT_DEMO_ONLY', 'Only BSIT DEMO previews are supported in this phase.');
+    $programCode = strtoupper((string)($program['program_code'] ?? ''));
+    $supportedDemoPrograms = ['BSIT', 'BSOA'];
+    if (!in_array($programCode, $supportedDemoPrograms, true) || ($period['period_status'] ?? null) !== 'DEMO') {
+        rejectSave(403, 'PROGRAM_DEMO_ONLY', 'This program is not enabled for DEMO schedule saving.');
     }
     if (($result['success'] ?? false) !== true || ($result['audit']['passed'] ?? false) !== true
         || ($result['status'] ?? '') !== 'DEMO_PREVIEW_GENERATED'
@@ -210,7 +212,7 @@ try {
     $active = $activeStmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($active as $batch) {
         if ((int)$batch['program_id'] === $programId) {
-            rejectSave(409, 'PROGRAM_ALREADY_SAVED', 'BSIT already has an ACTIVE timetable. Replacement is a separate workflow.');
+            rejectSave(409, 'PROGRAM_ALREADY_SAVED', $programCode . ' already has an ACTIVE timetable. Replacement is a separate workflow.');
         }
     }
     // Fresh input snapshot is exact; this checks the DB state seen by this transaction too.
@@ -331,7 +333,7 @@ try {
         'success' => true,
         'status' => 'DEMO_SCHEDULE_SAVED',
         'batch_id' => $batchId,
-        'program' => 'BSIT',
+        'program' => $programCode,
         'academic_period_id' => $periodId,
         'saved_meetings' => count($prepared),
         'database_write' => true,

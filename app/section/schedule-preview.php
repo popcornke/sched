@@ -168,21 +168,46 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     <div class="bcp-preview__filter-bar">
                         <div class="bcp-preview__filter-info">
                             <h2>Section Timetables</h2>
-                            <p>Face-to-Face schedules appear first, followed by Online meetings.</p>
+                            <p>Face-to-Face and Online classes are cleanly unified per subject.</p>
                         </div>
                         <div class="bcp-preview__filter-actions">
+
+                            <!-- DROPDOWN FILTERS -->
+                            <div class="bcp-preview__field-inline">
+                                <select id="bcpYearFilter" class="bcp-inline-select">
+                                    <option value="ALL">All Year Levels</option>
+                                    <option value="1">1st Year</option>
+                                    <option value="2">2nd Year</option>
+                                    <option value="3">3rd Year</option>
+                                    <option value="4">4th Year</option>
+                                </select>
+                            </div>
+                            <div class="bcp-preview__field-inline">
+                                <select id="bcpTypeFilter" class="bcp-inline-select">
+                                    <option value="ALL">All Section Types</option>
+                                    <option value="REGULAR">Regular</option>
+                                    <option value="CLUSTER">Cluster</option>
+                                    <option value="MAJOR">Major</option>
+                                </select>
+                            </div>
+
+                            <!-- SEARCH BAR WITH AUTOCOMPLETE -->
                             <div class="bcp-preview__search">
                                 <i class="fa-solid fa-magnifying-glass"></i>
-                                <input type="search" id="bcpSectionSearch" placeholder="Search section, e.g. 11001" aria-label="Search section timetable" autocomplete="off">
+                                <input type="search" id="bcpSectionSearch" placeholder="Search section or subject..." aria-label="Search section timetable" autocomplete="off">
+                                <div id="bcpSearchSuggestions" class="bcp-autocomplete-dropdown" hidden></div>
                             </div>
+
+                            <button type="button" id="bcpExpandAllBtn" class="bcp-preview__btn-tertiary" title="Expand all section accordions">Expand All</button>
+                            <button type="button" id="bcpCollapseAllBtn" class="bcp-preview__btn-tertiary" title="Collapse all section accordions">Collapse All</button>
                             <button type="button" id="bcpPrintTriggerBtn" class="bcp-preview__btn-secondary" title="Open official print preview format (Ctrl+P support)">
-                                <i class="fa-solid fa-print"></i> Print Preview
+                                <i class="fa-solid fa-print"></i> Print Report
                             </button>
                         </div>
                     </div>
                 </section>
 
-                <!-- RESULTS LIST -->
+                <!-- RESULTS LIST (Accordion Container) -->
                 <div id="bcpTimetableResults" class="bcp-preview__results"></div>
 
                 <!-- EMPTY STATE -->
@@ -209,24 +234,14 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 <div class="bcp-preview-modal__header">
                     <div>
                         <h2 id="bcpPrintModalTitle"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Official Report Preview</h2>
-                        <p id="bcpPrintModalDescription">Review the timetable format before generating the PDF or printing.</p>
+                        <p id="bcpPrintModalDescription">Review the official layout before generating the PDF or printing. Each section prints on a new sheet.</p>
                     </div>
                     <button type="button" id="bcpPrintCloseBtn" class="bcp-preview-modal__close" aria-label="Close report preview" title="Close Modal (Esc)">&times;</button>
                 </div>
 
                 <div id="bcpPrintableArea" class="bcp-print-document">
-                    <div class="bcp-print-header">
-                        <img src="../assets/images/BCP_LOGO.png" alt="Bestlink College of the Philippines logo" class="bcp-print-logo">
-                        <h3>BESTLINK COLLEGE OF THE PHILIPPINES</h3>
-                        <h1>Class Schedule Report</h1>
-                        <div class="bcp-print-meta">
-                            <span><strong>Program:</strong> <span id="printProgram"></span></span>
-                            <span><strong>Period:</strong> <span id="printPeriod"></span></span>
-                            <span><strong>Generated:</strong> <span id="printGenerated"><?= previewEsc($dashboardDate->format('M j, Y · g:i A')) ?></span></span>
-                        </div>
-                    </div>
                     <div id="bcpPrintContent" class="bcp-print-body">
-                        <!-- Visible timetable cards are cloned here for the formal report preview. -->
+                        <!-- Official dedicated print sections are dynamically generated here -->
                     </div>
                 </div>
 
@@ -259,6 +274,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             const regenerateButton = el("bcpRegenerateButton");
             const replaceButton = el("bcpReplaceButton");
             const searchInput = el("bcpSectionSearch");
+            const searchSuggestions = el("bcpSearchSuggestions");
+
+            const yearFilterSelect = el("bcpYearFilter");
+            const typeFilterSelect = el("bcpTypeFilter");
+
+            const expandAllBtn = el("bcpExpandAllBtn");
+            const collapseAllBtn = el("bcpCollapseAllBtn");
             const results = el("bcpTimetableResults");
 
             let catalog = null;
@@ -274,14 +296,14 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             function node(tag, className = "", value = undefined) {
                 const e = document.createElement(tag);
                 if (className) e.className = className;
-                if (value !== undefined && value !== null) e.textContent = String(value);
+                if (value !== undefined && value !== null) e.innerHTML = String(value);
                 return e;
             }
 
             /* --- PREMIUM CUSTOM SELECT DROPDOWN LOGIC --- */
             function upgradeSelects() {
-                document.querySelectorAll('.bcp-preview__field select').forEach(select => {
-                    select.style.display = 'none'; // Hide native dropdown
+                document.querySelectorAll('.bcp-preview__field select, .bcp-inline-select').forEach(select => {
+                    select.style.display = 'none';
 
                     const wrapper = node("div", "bcp-custom-select-wrapper");
                     select.parentNode.insertBefore(wrapper, select);
@@ -387,6 +409,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 assignments = [];
                 results.replaceChildren();
                 searchInput.value = "";
+                if (searchSuggestions) searchSuggestions.hidden = true;
                 el("bcpSummary").hidden = true;
                 el("bcpFilterPanel").hidden = true;
                 el("bcpEmptyState").hidden = true;
@@ -428,7 +451,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         ...(options?.headers || {})
                     }
                 };
-
                 const response = await fetch(url, requestOptions);
                 let data;
                 try {
@@ -436,21 +458,18 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 } catch {
                     throw new Error("The server returned an unreadable response.");
                 }
-
                 if (!response.ok || data.success !== true) {
-                    const message = (Array.isArray(data.audit?.errors) && data.audit.errors.length) ?
-                        data.audit.errors.slice(0, 3).join(" | ") :
-                        (data.message || data.status || "The request could not be completed.");
+                    const message = (Array.isArray(data.audit?.errors) && data.audit.errors.length) ? data.audit.errors.slice(0, 3).join(" | ") : (data.message || data.status || "The request could not be completed.");
                     throw new Error(message);
                 }
-
                 return data;
             }
 
             function fillSelect(select, values, makeValue, makeLabel, selectedValue) {
                 select.replaceChildren();
                 for (const value of values) {
-                    const option = node("option", "", makeLabel(value));
+                    const option = document.createElement("option");
+                    option.textContent = makeLabel(value);
                     option.value = String(makeValue(value));
                     select.appendChild(option);
                 }
@@ -468,9 +487,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             function updateHeading() {
                 const p = selectedPeriod();
                 const prog = program();
-                el("bcpPeriodDescription").textContent = p ?
-                    `${prog?.program_code || "Select program"} · AY ${p.academic_year} · Semester ${p.semester}` :
-                    "Choose a program and academic period.";
+                el("bcpPeriodDescription").textContent = p ? `${prog?.program_code || "Select program"} · AY ${p.academic_year} · Semester ${p.semester}` : "Choose a program and academic period.";
             }
 
             function showSummary(count, meetings, state, reference) {
@@ -482,36 +499,218 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             function formatTime(time) {
+                if (!time || time === '—') return '—';
                 const [h, m] = String(time).split(":").map(Number);
                 if (!Number.isFinite(h) || !Number.isFinite(m)) return String(time);
                 return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
             }
 
-            function createTable(rows, accessibleLabel) {
-                if (rows.length === 0) return node("p", "bcp-preview__helper", "No meetings in this delivery mode.");
-                const wrap = node("div", "bcp-preview__table-wrap");
-                const table = node("table", "bcp-preview__table");
-                table.setAttribute("aria-label", accessibleLabel);
-                const thead = node("thead");
-                const headings = node("tr");
+            function getYearSuffix(yearLvl) {
+                const y = parseInt(yearLvl);
+                if (isNaN(y)) return "Unknown Year";
+                if (y === 1) return "1st Year";
+                if (y === 2) return "2nd Year";
+                if (y === 3) return "3rd Year";
+                if (y === 4) return "4th Year";
+                return y + "th Year";
+            }
 
-                for (const title of ["Day", "Time", "Subject", "Teacher", "Room"]) {
-                    const th = node("th", "", title);
-                    th.scope = "col";
-                    headings.appendChild(th);
+            // ==============================================
+            // ANIMATED ACCORDION TOGGLE
+            // ==============================================
+            function toggleAccordion(header, body, icon, forceState) {
+                const isExpanded = header.getAttribute("aria-expanded") === "true";
+                const newState = forceState !== undefined ? forceState : !isExpanded;
+                header.setAttribute("aria-expanded", newState);
+
+                if (newState) {
+                    icon.classList.remove("fa-chevron-down");
+                    icon.classList.add("fa-chevron-up");
+                } else {
+                    icon.classList.remove("fa-chevron-up");
+                    icon.classList.add("fa-chevron-down");
                 }
-                thead.appendChild(headings);
-                table.appendChild(thead);
-                const tbody = node("tbody");
-                const sorted = [...rows].sort((a, b) => DAYS.indexOf(a.day_of_week) - DAYS.indexOf(b.day_of_week) ||
-                    a.start_time.localeCompare(b.start_time));
-                for (const r of sorted) {
-                    const tr = node("tr");
-                    for (const cell of [r.day_of_week, `${formatTime(r.start_time)} – ${formatTime(r.end_time)}`,
-                            `${r.subject_code} — ${r.subject_title}`, r.teacher_name, r.room_name || "Online"
-                        ]) {
-                        tr.appendChild(node("td", "", cell));
+            }
+
+            expandAllBtn?.addEventListener('click', () => {
+                document.querySelectorAll('.bcp-accordion__header').forEach(hdr => {
+                    const body = hdr.nextElementSibling;
+                    const icon = hdr.querySelector('.bcp-accordion__icon');
+                    toggleAccordion(hdr, body, icon, true);
+                });
+            });
+
+            collapseAllBtn?.addEventListener('click', () => {
+                document.querySelectorAll('.bcp-accordion__header').forEach(hdr => {
+                    const body = hdr.nextElementSibling;
+                    const icon = hdr.querySelector('.bcp-accordion__icon');
+                    toggleAccordion(hdr, body, icon, false);
+                });
+            });
+
+            // ==============================================
+            // SEARCH SUGGESTIONS & AUTOCOMPLETE
+            // ==============================================
+            function renderSearchSuggestions() {
+                if (!assignments || assignments.length === 0) {
+                    searchSuggestions.hidden = true;
+                    return;
+                }
+
+                const q = searchInput.value.trim().toLowerCase();
+                if (!q) {
+                    searchSuggestions.hidden = true;
+                    searchSuggestions.replaceChildren();
+                    return;
+                }
+
+                const matchedSections = new Map();
+                const matchedSubjects = new Map();
+
+                for (const r of assignments) {
+                    const code = String(r.section_code);
+                    const subjCode = String(r.subject_code || '');
+                    const subjTitle = String(r.subject_title || '');
+                    const yLvl = r.year_level || code.charAt(0);
+                    const sType = r.section_type || "REGULAR";
+
+                    if (code.toLowerCase().includes(q) && !matchedSections.has(code)) {
+                        matchedSections.set(code, {
+                            title: `Section ${code}`,
+                            meta: `${getYearSuffix(yLvl)} • ${sType}`,
+                            val: code,
+                            icon: "fa-layer-group"
+                        });
                     }
+
+                    if ((subjCode.toLowerCase().includes(q) || subjTitle.toLowerCase().includes(q)) && !matchedSubjects.has(subjCode)) {
+                        matchedSubjects.set(subjCode, {
+                            title: subjCode,
+                            meta: subjTitle,
+                            val: subjCode,
+                            icon: "fa-book-open"
+                        });
+                    }
+                }
+
+                const combined = [...matchedSections.values(), ...matchedSubjects.values()].slice(0, 8);
+
+                if (combined.length === 0) {
+                    searchSuggestions.hidden = true;
+                    searchSuggestions.replaceChildren();
+                    return;
+                }
+
+                searchSuggestions.replaceChildren();
+
+                combined.forEach(item => {
+                    const div = document.createElement("div");
+                    div.className = "bcp-autocomplete-item";
+                    div.setAttribute("role", "button");
+                    div.setAttribute("tabindex", "0");
+                    div.innerHTML = `
+                        <strong><i class="fa-solid ${item.icon}"></i> ${item.title}</strong>
+                        <small>${item.meta}</small>
+                    `;
+
+                    div.addEventListener("click", () => {
+                        searchInput.value = item.val;
+                        searchSuggestions.hidden = true;
+                        render();
+                        if (expandAllBtn) expandAllBtn.click();
+                    });
+
+                    searchSuggestions.appendChild(div);
+                });
+
+                searchSuggestions.hidden = false;
+            }
+
+            function createUnifiedTable(rows) {
+                const subjects = new Map();
+                for (const r of rows) {
+                    if (!subjects.has(r.subject_code)) subjects.set(r.subject_code, {
+                        code: r.subject_code,
+                        title: r.subject_title,
+                        f2f: null,
+                        online: null,
+                        teacher: '—'
+                    });
+                    const subj = subjects.get(r.subject_code);
+                    if (r.delivery_mode === 'F2F') subj.f2f = r;
+                    if (r.delivery_mode === 'ONLINE') subj.online = r;
+                    if (r.teacher_name && r.teacher_name !== '—') subj.teacher = r.teacher_name;
+                }
+
+                const wrap = node("div", "bcp-timetable__table-wrap");
+                const table = node("table", "bcp-timetable__table");
+                const thead = node("thead");
+                const tr1 = node("tr");
+                const thSubj = node("th", "", "Subject");
+                thSubj.rowSpan = 2;
+                tr1.appendChild(thSubj);
+                const thF2F = node("th", "bcp-timetable__th-group bcp-timetable__th-f2f", "FACE-TO-FACE");
+                thF2F.colSpan = 3;
+                tr1.appendChild(thF2F);
+                const thOnline = node("th", "bcp-timetable__th-group bcp-timetable__th-online", "ONLINE");
+                thOnline.colSpan = 2;
+                tr1.appendChild(thOnline);
+                const thTeacher = node("th", "", "Instructor");
+                thTeacher.rowSpan = 2;
+                tr1.appendChild(thTeacher);
+
+                const tr2 = node("tr");
+                ['Day', 'Time', 'Room', 'Day', 'Time'].forEach(text => tr2.appendChild(node("th", "bcp-timetable__th-sub", text)));
+                thead.append(tr1, tr2);
+                table.appendChild(thead);
+
+                const tbody = node("tbody");
+
+                // SORT BY CHRONOLOGICAL DAY & TIME (Monday -> Saturday)
+                const sortedSubjects = [...subjects.values()].sort((a, b) => {
+                    const dayA = a.f2f ? a.f2f.day_of_week : (a.online ? a.online.day_of_week : "");
+                    const timeA = a.f2f ? a.f2f.start_time : (a.online ? a.online.start_time : "24:00:00");
+                    const idxA = DAYS.indexOf(dayA) !== -1 ? DAYS.indexOf(dayA) : 99;
+
+                    const dayB = b.f2f ? b.f2f.day_of_week : (b.online ? b.online.day_of_week : "");
+                    const timeB = b.f2f ? b.f2f.start_time : (b.online ? b.online.start_time : "24:00:00");
+                    const idxB = DAYS.indexOf(dayB) !== -1 ? DAYS.indexOf(dayB) : 99;
+
+                    if (idxA !== idxB) return idxA - idxB;
+                    return timeA.localeCompare(timeB);
+                });
+
+                for (const s of sortedSubjects) {
+                    const tr = node("tr", "bcp-timetable__row");
+                    const tdSubj = node("td", "bcp-timetable__td-subject");
+                    tdSubj.innerHTML = `<strong>${s.code}</strong><span>${s.title}</span>`;
+                    tr.appendChild(tdSubj);
+                    const tdF2FDay = node("td", "bcp-timetable__td-day", s.f2f ? s.f2f.day_of_week : "—");
+                    const tdF2FTime = node("td", "bcp-timetable__td-time", s.f2f ? `${formatTime(s.f2f.start_time)} – ${formatTime(s.f2f.end_time)}` : "—");
+                    const tdF2FRoom = node("td", "bcp-timetable__td-room", s.f2f ? (s.f2f.room_name || '—') : "—");
+                    const tdOnlDay = node("td", "bcp-timetable__td-day bcp-timetable__td-onl-day", s.online ? s.online.day_of_week : "—");
+                    const tdOnlTime = node("td", "bcp-timetable__td-time", s.online ? `${formatTime(s.online.start_time)} – ${formatTime(s.online.end_time)}` : "—");
+
+                    tdF2FDay.setAttribute("data-label", "F2F Day");
+                    tdF2FTime.setAttribute("data-label", "F2F Time");
+                    tdF2FRoom.setAttribute("data-label", "F2F Room");
+                    tdOnlDay.setAttribute("data-label", "Online Day");
+                    tdOnlTime.setAttribute("data-label", "Online Time");
+
+                    if (!s.f2f) {
+                        tdF2FDay.classList.add("bcp-timetable__td-empty");
+                        tdF2FTime.classList.add("bcp-timetable__td-empty");
+                        tdF2FRoom.classList.add("bcp-timetable__td-empty");
+                    }
+                    if (!s.online) {
+                        tdOnlDay.classList.add("bcp-timetable__td-empty");
+                        tdOnlTime.classList.add("bcp-timetable__td-empty");
+                    }
+
+                    tr.append(tdF2FDay, tdF2FTime, tdF2FRoom, tdOnlDay, tdOnlTime);
+                    const tdTeacher = node("td", "bcp-timetable__td-teacher", s.teacher);
+                    tdTeacher.setAttribute("data-label", "Instructor");
+                    tr.appendChild(tdTeacher);
                     tbody.appendChild(tr);
                 }
                 table.appendChild(tbody);
@@ -522,37 +721,75 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             function render() {
                 results.replaceChildren();
                 const groups = new Map();
+
                 const q = searchInput.value.trim().toLowerCase();
+                const yf = yearFilterSelect.value;
+                const tf = typeFilterSelect.value;
+
                 for (const r of assignments) {
                     const code = String(r.section_code);
-                    if (!code.toLowerCase().includes(q)) continue;
+                    const yLvl = r.year_level || String(code).charAt(0);
+                    const sType = r.section_type || "REGULAR";
+                    const subjCode = String(r.subject_code || '').toLowerCase();
+                    const subjTitle = String(r.subject_title || '').toLowerCase();
+
+                    if (yf !== "ALL" && String(yLvl) !== yf) continue;
+                    if (tf !== "ALL" && String(sType).toUpperCase() !== String(tf).toUpperCase()) continue;
+
+                    const matchesQuery = !q ||
+                        code.toLowerCase().includes(q) ||
+                        subjCode.includes(q) ||
+                        subjTitle.includes(q);
+
+                    if (!matchesQuery) continue;
+
                     if (!groups.has(code)) groups.set(code, []);
                     groups.get(code).push(r);
                 }
+
                 if (groups.size === 0) {
-                    results.appendChild(node("p", "bcp-preview__no-results", "No matching sections found."));
+                    results.appendChild(node("p", "bcp-preview__no-results", "No matching sections or subjects found."));
                     return;
                 }
+
                 for (const code of [...groups.keys()].sort()) {
                     const rows = groups.get(code);
-                    const card = node("article", "bcp-preview__section-card");
+                    const uniqueSubjects = new Set(rows.map(r => r.subject_code)).size;
 
-                    const header = node("div", "bcp-preview__section-header");
-                    const titleGroup = node("div");
-                    titleGroup.appendChild(node("span", "bcp-preview__section-label", `${programSelect.value} SECTION`));
-                    titleGroup.appendChild(node("h2", "", code));
-                    header.appendChild(titleGroup);
-                    header.appendChild(node("span", "bcp-preview__section-type", rows[0].section_type));
-                    card.appendChild(header);
+                    const yearLvl = rows[0].year_level || String(code).charAt(0);
+                    const secType = rows[0].section_type || "REGULAR";
 
-                    card.appendChild(node("h3", "bcp-preview__mode-heading", "Face-to-Face Schedule"));
-                    card.appendChild(createTable(rows.filter(r => r.delivery_mode === "F2F"), `${code} Face-to-Face schedule`));
+                    const accItem = node("div", "bcp-accordion__item");
+                    const accHeader = node("div", "bcp-accordion__header");
+                    accHeader.setAttribute("tabindex", "0");
+                    accHeader.setAttribute("role", "button");
+                    accHeader.setAttribute("aria-expanded", "false");
 
-                    const onlineHeading = node("h3", "bcp-preview__mode-heading bcp-preview__mode-heading--online", "Online Schedule");
-                    card.appendChild(onlineHeading);
-                    card.appendChild(createTable(rows.filter(r => r.delivery_mode === "ONLINE"), `${code} Online schedule`));
+                    const titleGroup = node("div", "bcp-accordion__title");
+                    titleGroup.innerHTML = `<h3>${code}</h3><p>${getYearSuffix(yearLvl)} • ${secType} • ${uniqueSubjects} Subjects</p>`;
 
-                    results.appendChild(card);
+                    const accIcon = node("i", "fa-solid fa-chevron-down bcp-accordion__icon");
+                    accHeader.append(titleGroup, accIcon);
+
+                    const accBody = node("div", "bcp-accordion__body");
+                    const accInner = node("div", "bcp-accordion__inner");
+                    const accContent = node("div", "bcp-accordion__content");
+
+                    accContent.appendChild(createUnifiedTable(rows));
+                    accInner.appendChild(accContent);
+                    accBody.appendChild(accInner);
+
+                    accItem.append(accHeader, accBody);
+
+                    accHeader.addEventListener("click", () => toggleAccordion(accHeader, accBody, accIcon));
+                    accHeader.addEventListener("keydown", (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleAccordion(accHeader, accBody, accIcon);
+                        }
+                    });
+
+                    results.appendChild(accItem);
                 }
             }
 
@@ -580,6 +817,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 setBusy(true);
                 try {
                     const p = selectedPeriod();
+                    // FIXED: URLSearchParams
                     const query = new URLSearchParams({
                         program: selectedProgram.program_code,
                         academic_year: p.academic_year,
@@ -588,31 +826,21 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     const saved = await getJson(`../api/saved-schedule.php?${query}`);
                     if (version !== requestVersion) return;
                     if (saved.status === "SAVED_SCHEDULE_LOADED") {
-                        if (!Array.isArray(saved.assignments) || saved.assignments.length !== saved.saved_meetings) {
-                            throw new Error("Saved timetable is incomplete. Please review the database.");
-                        }
+                        if (!Array.isArray(saved.assignments) || saved.assignments.length !== saved.saved_meetings) throw new Error("Saved timetable is incomplete. Please review the database.");
                         showAssignments(saved.assignments);
                         originalBatch = Number(saved.batch.batch_id);
                         originalAssignments = saved.assignments;
-                        const replacementAvailable = selectedProgram.program_code === "BSIT"
-                            && saved.batch.data_origin === "DEMO"
-                            && selectedPeriod()?.period_status === "DEMO";
+                        const replacementAvailable = selectedProgram.program_code === "BSIT" && saved.batch.data_origin === "DEMO" && selectedPeriod()?.period_status === "DEMO";
                         regenerateButton.hidden = !replacementAvailable;
                         showSummary(saved.sections, saved.saved_meetings, "SAVED · DEMO", `Batch #${saved.batch.batch_id}`);
-                        el("bcpActionDescription").textContent = replacementAvailable
-                            ? "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch."
-                            : "Saved timetable is shown in read-only mode.";
+                        el("bcpActionDescription").textContent = replacementAvailable ? "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch." : "Saved timetable is shown in read-only mode.";
                         el("bcpProgramNote").textContent = `ACTIVE batch #${saved.batch.batch_id} · ${saved.saved_meetings} stored meetings · read-only view.`;
                         setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
                     } else if (saved.status === "NO_SAVED_SCHEDULE") {
                         const eligible = selectedProgram.can_generate_demo === true;
                         generateButton.hidden = !eligible;
-                        el("bcpProgramNote").textContent = eligible ?
-                            `${selectedProgram.demo_sections} DEMO sections · ${selectedProgram.program_code} scheduling configuration is available.` :
-                            "No saved timetable. Generation is disabled until inputs are ready.";
-                        el("bcpActionDescription").textContent = eligible ?
-                            `Generate a new ${selectedProgram.program_code} DEMO timetable, review it, then confirm saving.` :
-                            "Saved timetable viewing is available. Generation is not configured yet.";
+                        el("bcpProgramNote").textContent = eligible ? `${selectedProgram.demo_sections} DEMO sections · ${selectedProgram.program_code} scheduling configuration is available.` : "No saved timetable. Generation is disabled until inputs are ready.";
+                        el("bcpActionDescription").textContent = eligible ? `Generate a new ${selectedProgram.program_code} DEMO timetable, review it, then confirm saving.` : "Saved timetable viewing is available. Generation is not configured yet.";
                         setEmpty(eligible ? "Click Generate Schedule to create a new preview." : "No saved timetable.");
                         setStatus(eligible ? "Ready to generate schedule." : "No schedule available.", "info");
                     } else {
@@ -647,12 +875,9 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         setStatus("There are no selectable programs and academic periods.", "info");
                         return;
                     }
-                    fillSelect(periodSelect, data.periods, p => p.academic_period_id,
-                        p => `${p.academic_year} · Semester ${p.semester} (${p.period_status})`, data.selected_period.academic_period_id);
-                    const desiredCode = data.programs.some(p => p.program_code === programCode) ? programCode :
-                        data.programs.some(p => p.program_code === "BSIT") ? "BSIT" : data.programs[0].program_code;
-                    fillSelect(programSelect, data.programs, p => p.program_code,
-                        p => `${p.program_code} — ${p.program_name}`, desiredCode);
+                    fillSelect(periodSelect, data.periods, p => p.academic_period_id, p => `${p.academic_year} · Semester ${p.semester} (${p.period_status})`, data.selected_period.academic_period_id);
+                    const desiredCode = data.programs.some(p => p.program_code === programCode) ? programCode : data.programs.some(p => p.program_code === "BSIT") ? "BSIT" : data.programs[0].program_code;
+                    fillSelect(programSelect, data.programs, p => p.program_code, p => `${p.program_code} — ${p.program_name}`, desiredCode);
                 } catch (err) {
                     setEmpty("Could not load the database program list.");
                     setStatus(readableError(err, "Could not load programs and academic periods. Refresh and try again."), "error");
@@ -664,305 +889,87 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             async function generateSchedule() {
-                if (
-                    busy ||
-                    selectedProgram?.can_generate_demo !== true
-                ) {
-                    return;
-                }
-
+                if (busy || selectedProgram?.can_generate_demo !== true) return;
                 const p = selectedPeriod();
                 const code = selectedProgram.program_code;
-
                 clearPreview();
-
                 setBusy(true);
-
                 generateButton.hidden = false;
-
-                generateButton.innerHTML =
-                    `<i class="fa-solid fa-circle-notch fa-spin"></i> Generating…`;
-
-                setStatus(
-                    "Starting the scheduling optimizer…",
-                    "loading"
-                );
-
+                generateButton.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Generating…`;
+                setStatus("Starting the scheduling optimizer…", "loading");
                 try {
-
-                    const check = await getJson(
-                        `../api/program-catalog.php?period_id=${encodeURIComponent(
-                p.academic_period_id
-            )}`
-                    );
-
-                    const current =
-                        check.programs.find(
-                            value =>
-                            value.program_code === code
-                        );
-
-                    if (!current?.can_generate_demo) {
-                        throw new Error(
-                            "This program already has an ACTIVE timetable or is not ready."
-                        );
-                    }
-
-                    const query =
-                        new URLSearchParams({
-                            program: code,
-                            academic_year: p.academic_year,
-                            semester: String(p.semester),
-                        });
-
-                    // Start background solver job.
-                    const started = await getJson(
-                        `../api/generate.php?${query}`
-                    );
-
-                    if (
-                        started.status !==
-                        "SCHEDULE_JOB_QUEUED" ||
-                        typeof started.job_id !==
-                        "string"
-                    ) {
-                        throw new Error(
-                            "The scheduling job could not be started."
-                        );
-                    }
-
-                    const jobId =
-                        started.job_id;
-
-                    let result = null;
-
-        // Poll the background solver job.
-        //
-        // HostForge may occasionally return a temporary
-        // 502/503/504 while the long-running Python solver
-        // is still healthy. A transient gateway response
-        // must not cancel the scheduling job.
-
-        let transientFailures = 0;
-
-        const maxTransientFailures = 12;
-
-        while (true) {
-
-            await new Promise(
-                resolve => setTimeout(
-                    resolve,
-                    5000
-                )
-            );
-
-            let response;
-
-            try {
-
-                response = await fetch(
-                    `../api/generate-status.php?job_id=${encodeURIComponent(
-                        jobId
-                    )}`,
-                    {
-                        cache: "no-store",
-                        credentials: "same-origin",
-                        headers: {
-                            "Accept": "application/json"
-                        }
-                    }
-                );
-
-            } catch (error) {
-
-                transientFailures++;
-
-                if (
-                    transientFailures >
-                    maxTransientFailures
-                ) {
-                    throw new Error(
-                        "Unable to reach the scheduling status service after repeated retries."
-                    );
-                }
-
-                setStatus(
-                    "The scheduler is still running. Reconnecting to the status service…",
-                    "loading"
-                );
-
-                continue;
-            }
-
-            // Temporary infrastructure/gateway error.
-            //
-            // Do not abort the Python job.
-            if (
-                response.status === 502 ||
-                response.status === 503 ||
-                response.status === 504
-            ) {
-
-                transientFailures++;
-
-                if (
-                    transientFailures >
-                    maxTransientFailures
-                ) {
-                    throw new Error(
-                        "The scheduling status service remained unavailable after repeated retries."
-                    );
-                }
-
-                setStatus(
-                    "OR-Tools is still optimizing. Waiting for the server to become available…",
-                    "loading"
-                );
-
-                continue;
-            }
-
-            let status;
-
-            try {
-
-                status = await response.json();
-
-            } catch {
-
-                transientFailures++;
-
-                if (
-                    transientFailures >
-                    maxTransientFailures
-                ) {
-                    throw new Error(
-                        "The scheduling status service repeatedly returned an invalid response."
-                    );
-                }
-
-                setStatus(
-                    "OR-Tools is still optimizing. Reconnecting…",
-                    "loading"
-                );
-
-                continue;
-            }
-
-            if (
-                !response.ok ||
-                status.success !== true
-            ) {
-
-                throw new Error(
-                    status.message ||
-                    status.status ||
-                    "The scheduling status request failed."
-                );
-            }
-
-            // Successful status request resets the
-            // consecutive transient-failure counter.
-            transientFailures = 0;
-
-            if (
-                status.status ===
-                "SCHEDULE_JOB_RUNNING"
-            ) {
-
-                setStatus(
-                    status.job_status === "QUEUED"
-                        ? "Scheduling job is queued…"
-                        : "OR-Tools is optimizing the timetable…",
-                    "loading"
-                );
-
-                continue;
-            }
-
-            result = status;
-
-            break;
-        }
-
-                    if (
-                        result.status !==
-                        "DEMO_PREVIEW_GENERATED" ||
-                        result.audit?.passed !==
-                        true
-                    ) {
-
-                        throw new Error(
-                            result.message ||
-                            "Generated timetable failed required preview checks."
-                        );
-                    }
-
-                    showAssignments(
-                        result.assignments
-                    );
-
-                    showSummary(
-                        result.sections,
-                        `${result.returned_meetings} / ${result.required_meetings}`,
-                        "AUDIT_PASSED",
-                        `${Number(
-                result.solve_seconds
-            ).toFixed(1)}s`
-                    );
-
-                    window.BCPNotifications?.notify({
-                        type: "success",
-                        title: "Schedule generated",
-                        message: `${code} ${p.academic_year} · Semester ${p.semester} finished in ${Number(result.solve_seconds).toFixed(1)}s with AUDIT_PASSED. Review the timetable before saving.`,
-                        url: `${window.location.pathname}${window.location.search}`
+                    const check = await getJson(`../api/program-catalog.php?period_id=${encodeURIComponent(p.academic_period_id)}`);
+                    const current = check.programs.find(value => value.program_code === code);
+                    if (!current?.can_generate_demo) throw new Error("This program already has an ACTIVE timetable or is not ready.");
+                    const query = new URLSearchParams({
+                        program: code,
+                        academic_year: p.academic_year,
+                        semester: String(p.semester)
                     });
+                    const started = await getJson(`../api/generate.php?${query}`);
+                    if (started.status !== "SCHEDULE_JOB_QUEUED" || typeof started.job_id !== "string") throw new Error("The scheduling job could not be started.");
+                    const jobId = started.job_id;
+                    let result = null;
+                    let transientFailures = 0;
+                    const maxTransientFailures = 12;
 
-                    if (
-                        result.save_ready_demo === true &&
-                        typeof result.save_token ===
-                        "string"
-                    ) {
-
-                        saveToken =
-                            result.save_token;
-
-                        saveButton.hidden =
-                            false;
-
-                        setStatus(
-                            "Timetable generated and audited. Review before saving.",
-                            "success"
-                        );
+                    while (true) {
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        let response;
+                        try {
+                            response = await fetch(`../api/generate-status.php?job_id=${encodeURIComponent(jobId)}`, {
+                                cache: "no-store",
+                                credentials: "same-origin",
+                                headers: {
+                                    "Accept": "application/json"
+                                }
+                            });
+                        } catch (error) {
+                            transientFailures++;
+                            if (transientFailures > maxTransientFailures) throw new Error("Unable to reach the scheduling status service after repeated retries.");
+                            setStatus("The scheduler is still running. Reconnecting to the status service…", "loading");
+                            continue;
+                        }
+                        if (response.status === 502 || response.status === 503 || response.status === 504) {
+                            transientFailures++;
+                            if (transientFailures > maxTransientFailures) throw new Error("The scheduling status service remained unavailable after repeated retries.");
+                            setStatus("OR-Tools is still optimizing. Waiting for the server to become available…", "loading");
+                            continue;
+                        }
+                        let statusObj;
+                        try {
+                            statusObj = await response.json();
+                        } catch {
+                            transientFailures++;
+                            if (transientFailures > maxTransientFailures) throw new Error("The scheduling status service repeatedly returned an invalid response.");
+                            setStatus("OR-Tools is still optimizing. Reconnecting…", "loading");
+                            continue;
+                        }
+                        if (!response.ok || statusObj.success !== true) throw new Error(statusObj.message || statusObj.status || "The scheduling status request failed.");
+                        transientFailures = 0;
+                        if (statusObj.status === "SCHEDULE_JOB_RUNNING") {
+                            setStatus(statusObj.job_status === "QUEUED" ? "Scheduling job is queued…" : "OR-Tools is optimizing the timetable…", "loading");
+                            continue;
+                        }
+                        result = statusObj;
+                        break;
                     }
-
-                    generateButton.hidden =
-                        true;
-
+                    if (result.status !== "DEMO_PREVIEW_GENERATED" || result.audit?.passed !== true) throw new Error(result.message || "Generated timetable failed required preview checks.");
+                    showAssignments(result.assignments);
+                    showSummary(result.sections, `${result.returned_meetings} / ${result.required_meetings}`, "AUDIT_PASSED", `${Number(result.solve_seconds).toFixed(1)}s`);
+                    if (result.save_ready_demo === true && typeof result.save_token === "string") {
+                        saveToken = result.save_token;
+                        saveButton.hidden = false;
+                        setStatus("Timetable generated and audited. Review before saving.", "success");
+                    }
+                    generateButton.hidden = true;
                 } catch (err) {
-
                     clearPreview();
-
-                    setEmpty(
-                        "Could not generate a new timetable."
-                    );
-
-                    setStatus(
-                        readableError(
-                            err,
-                            "Could not generate a timetable. Review the selected inputs and try again."
-                        ),
-                        "error"
-                    );
-
-                    generateButton.hidden =
-                        false;
-
+                    setEmpty("Could not generate a new timetable.");
+                    setStatus(readableError(err, "Could not generate a timetable. Review the selected inputs and try again."), "error");
+                    generateButton.hidden = false;
                 } finally {
-
-                    generateButton.innerHTML =
-                        `<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Schedule`;
-
+                    generateButton.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Schedule`;
                     setBusy(false);
                 }
             }
@@ -992,42 +999,12 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     saveButton.hidden = true;
                     await loadCatalog(periodId, programCode, true);
                     setStatus(`Saved DEMO batch #${saved.batch_id} successfully. The ACTIVE saved timetable is now displayed.`, "success");
-                    window.BCPNotifications?.notify({
-                        type: "success",
-                        title: "Schedule saved",
-                        message: `${programCode} DEMO batch #${saved.batch_id} is now the ACTIVE saved timetable.`,
-                        url: `${window.location.pathname}${window.location.search}`
-                    });
                 } catch (err) {
                     setStatus(readableError(err, "The timetable could not be saved. The preview remains unsaved."), "error");
                 } finally {
                     saveButton.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save DEMO Schedule`;
                     setBusy(false);
                 }
-            }
-
-            function onlineGapMinutes(rows) {
-                const groups = new Map();
-                for (const r of rows) {
-                    if (r.delivery_mode !== "ONLINE" || r.section_type !== "REGULAR") continue;
-                    const year = Number(String(r.section_code)[0]);
-                    if (![1, 2, 3].includes(year)) continue;
-                    const key = `${r.section_code}|${r.day_of_week}`;
-                    if (!groups.has(key)) groups.set(key, []);
-                    groups.get(key).push(r);
-                }
-                const minute = value => {
-                    const [h, m] = String(value).split(":").map(Number);
-                    return h * 60 + m;
-                };
-                let total = 0;
-                for (const day of groups.values()) {
-                    const start = Math.min(...day.map(r => minute(r.start_time)));
-                    const end = Math.max(...day.map(r => minute(r.end_time)));
-                    const teaching = day.reduce((n, r) => n + minute(r.end_time) - minute(r.start_time), 0);
-                    total += Math.max(0, end - start - teaching);
-                }
-                return total;
             }
 
             async function regeneratePreview() {
@@ -1058,21 +1035,38 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     if (replacement.status !== "DEMO_PREVIEW_GENERATED") throw new Error("Replacement failed.");
                     replaceToken = replacement.replace_token;
                     showAssignments(replacement.assignments);
-                    showSummary(replacement.sections, replacement.returned_meetings,
-                        "REPLACEMENT PREVIEW · NOT SAVED", `${Number(replacement.solve_seconds).toFixed(1)}s`);
+                    showSummary(replacement.sections, replacement.returned_meetings, "REPLACEMENT PREVIEW · NOT SAVED", `${Number(replacement.solve_seconds).toFixed(1)}s`);
 
+                    const minute = value => {
+                        const [h, m] = String(value).split(":").map(Number);
+                        return h * 60 + m;
+                    };
+
+                    function onlineGapMinutes(rows) {
+                        const groups = new Map();
+                        for (const r of rows) {
+                            if (r.delivery_mode !== "ONLINE" || r.section_type !== "REGULAR") continue;
+                            const year = Number(String(r.section_code)[0]);
+                            if (![1, 2, 3].includes(year)) continue;
+                            const key = `${r.section_code}|${r.day_of_week}`;
+                            if (!groups.has(key)) groups.set(key, []);
+                            groups.get(key).push(r);
+                        }
+                        let total = 0;
+                        for (const day of groups.values()) {
+                            const start = Math.min(...day.map(r => minute(r.start_time)));
+                            const end = Math.max(...day.map(r => minute(r.end_time)));
+                            const teaching = day.reduce((n, r) => n + minute(r.end_time) - minute(r.start_time), 0);
+                            total += Math.max(0, end - start - teaching);
+                        }
+                        return total;
+                    }
                     const oldGap = onlineGapMinutes(before);
                     const newGap = onlineGapMinutes(replacement.assignments);
                     el("bcpReplacementGapComparison").textContent = `Previous ACTIVE batch #${batchId}: ${oldGap} min total Online gaps. Proposed preview: ${newGap} min. Difference: ${newGap - oldGap} min.`;
                     comparison.hidden = false;
                     replaceButton.hidden = false;
                     setStatus(`Replacement preview audited. Batch #${batchId} remains ACTIVE.`, "success");
-                    window.BCPNotifications?.notify({
-                        type: "success",
-                        title: "Schedule replacement preview ready",
-                        message: `BSIT replacement preview passed the audit. ACTIVE batch #${batchId} is unchanged until confirmation.`,
-                        url: `${window.location.pathname}${window.location.search}`
-                    });
                 } catch (err) {
                     setStatus(readableError(err, "Could not create a replacement preview. The ACTIVE batch was not changed."), "error");
                 } finally {
@@ -1104,12 +1098,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     replaceToken = null;
                     await loadCatalog(periodId, "BSIT", true);
                     setStatus("Replacement saved successfully. The new ACTIVE BSIT timetable is now displayed.", "success");
-                    window.BCPNotifications?.notify({
-                        type: "success",
-                        title: "Schedule replaced",
-                        message: `The BSIT replacement was saved successfully. New ACTIVE batch #${saved.batch_id || 'created'} is now displayed.`,
-                        url: `${window.location.pathname}${window.location.search}`
-                    });
                 } catch (err) {
                     setStatus(readableError(err, "The replacement could not be saved. The previous ACTIVE batch remains unchanged."), "error");
                 } finally {
@@ -1119,37 +1107,170 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             const printModal = el("bcpPrintModal");
-            const printDialog = printModal?.querySelector(".bcp-preview-modal__content");
             const printTrigger = el("bcpPrintTriggerBtn");
             let lastFocusedBeforeModal = null;
 
             function focusableInModal() {
-                if (!printModal) return [];
-                return [...printModal.querySelectorAll(
-                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-                )].filter(item => !item.hidden && item.offsetParent !== null);
+                return [...printModal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => !item.hidden && item.offsetParent !== null);
+            }
+
+            // OFFICIAL PRINT PREVIEW GENERATION
+            function buildPrintRows(rows) {
+                const subjects = new Map();
+                for (const r of rows) {
+                    if (!subjects.has(r.subject_code)) subjects.set(r.subject_code, {
+                        code: r.subject_code,
+                        title: r.subject_title,
+                        f2f: null,
+                        online: null,
+                        teacher: '—'
+                    });
+                    const subj = subjects.get(r.subject_code);
+                    if (r.delivery_mode === 'F2F') subj.f2f = r;
+                    if (r.delivery_mode === 'ONLINE') subj.online = r;
+                    if (r.teacher_name && r.teacher_name !== '—') subj.teacher = r.teacher_name;
+                }
+
+                let html = '';
+                let index = 1;
+
+                // SORT BY CHRONOLOGICAL DAY & TIME FOR PRINTING
+                const sorted = [...subjects.values()].sort((a, b) => {
+                    const dayA = a.f2f ? a.f2f.day_of_week : (a.online ? a.online.day_of_week : "");
+                    const timeA = a.f2f ? a.f2f.start_time : (a.online ? a.online.start_time : "24:00:00");
+                    const idxA = DAYS.indexOf(dayA) !== -1 ? DAYS.indexOf(dayA) : 99;
+
+                    const dayB = b.f2f ? b.f2f.day_of_week : (b.online ? b.online.day_of_week : "");
+                    const timeB = b.f2f ? b.f2f.start_time : (b.online ? b.online.start_time : "24:00:00");
+                    const idxB = DAYS.indexOf(dayB) !== -1 ? DAYS.indexOf(dayB) : 99;
+
+                    if (idxA !== idxB) return idxA - idxB;
+                    return timeA.localeCompare(timeB);
+                });
+
+                for (const s of sorted) {
+                    const f2fDay = s.f2f ? s.f2f.day_of_week : '—';
+                    const f2fTime = s.f2f ? `${formatTime(s.f2f.start_time)} – ${formatTime(s.f2f.end_time)}` : '—';
+                    const room = s.f2f ? (s.f2f.room_name || '—') : '—';
+
+                    const onlDay = s.online ? s.online.day_of_week : '—';
+                    const onlTime = s.online ? `${formatTime(s.online.start_time)} – ${formatTime(s.online.end_time)}` : '—';
+
+                    html += `
+                        <tr>
+                            <td class="text-center">${index++}</td>
+                            <td><strong>${s.code}</strong></td>
+                            <td>${s.title}</td>
+                            <td class="text-center">${f2fDay}</td>
+                            <td class="text-center">${f2fTime}</td>
+                            <td class="text-center">${room}</td>
+                            <td class="text-center">${onlDay}</td>
+                            <td class="text-center">${onlTime}</td>
+                            <td>${s.teacher}</td>
+                        </tr>
+                    `;
+                }
+                return html;
             }
 
             function openPrintModal() {
-                const cards = [...results.querySelectorAll(".bcp-preview__section-card")];
-                if (cards.length === 0) {
-                    setStatus("No displayed timetable sections are available for print preview.", "info");
+                if (!assignments || assignments.length === 0) {
+                    setStatus("No timetable data available to print.", "info");
+                    return;
+                }
+                const printContent = el("bcpPrintContent");
+                printContent.innerHTML = "";
+
+                const groups = new Map();
+                const q = searchInput.value.trim().toLowerCase();
+                const yf = yearFilterSelect.value;
+                const tf = typeFilterSelect.value;
+
+                for (const r of assignments) {
+                    const code = String(r.section_code);
+                    const yLvl = r.year_level || String(code).charAt(0);
+                    const sType = r.section_type || "REGULAR";
+
+                    // Apply filters again for print format
+                    if (yf !== "ALL" && String(yLvl) !== yf) continue;
+                    if (tf !== "ALL" && String(sType).toUpperCase() !== String(tf).toUpperCase()) continue;
+
+                    // Search matching
+                    const subjCode = String(r.subject_code || '').toLowerCase();
+                    const subjTitle = String(r.subject_title || '').toLowerCase();
+                    const matchesQuery = !q || code.toLowerCase().includes(q) || subjCode.includes(q) || subjTitle.includes(q);
+
+                    if (!matchesQuery) continue;
+
+                    if (!groups.has(code)) groups.set(code, []);
+                    groups.get(code).push(r);
+                }
+
+                if (groups.size === 0) {
+                    setStatus("No matching sections to print.", "info");
                     searchInput.focus();
                     return;
                 }
 
-                const printContent = el("bcpPrintContent");
-                printContent.replaceChildren(...cards.map(card => card.cloneNode(true)));
+                const p = selectedPeriod();
+                const ay = p ? p.academic_year : "—";
+                const sem = p ? (p.semester == 1 ? "First Semester" : "Second Semester") : "—";
+                const progName = program() ? program().program_name : "—";
 
-                const progSelect = el("bcpProgramSelect");
-                const perSelect = el("bcpPeriodSelect");
-                el("printProgram").textContent = progSelect.options[progSelect.selectedIndex]?.text || "—";
-                el("printPeriod").textContent = perSelect.options[perSelect.selectedIndex]?.text || "—";
-                el("printGenerated").textContent = new Intl.DateTimeFormat("en-PH", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone: "Asia/Manila"
-                }).format(new Date());
+                for (const code of [...groups.keys()].sort()) {
+                    const rows = groups.get(code);
+                    const yearLvl = rows[0].year_level || String(code).charAt(0);
+
+                    const sectionWrapper = document.createElement('section');
+                    sectionWrapper.className = 'print-section';
+
+                    sectionWrapper.innerHTML = `
+                        <div class="print-official-header">
+                            <img src="../assets/images/BCP_LOGO.png" alt="BCP Logo" class="print-logo">
+                            <div class="print-school-name">BESTLINK COLLEGE OF THE PHILIPPINES</div>
+                            <div class="print-doc-title">Official Class Schedule</div>
+                        </div>
+                        <div class="print-section-info">
+                            <div class="print-info-grid">
+                                <div><strong>Program:</strong> ${progName}</div>
+                                <div><strong>Section:</strong> ${code}</div>
+                                <div><strong>Year Level:</strong> ${getYearSuffix(yearLvl)}</div>
+                                <div><strong>Academic Year:</strong> ${ay}</div>
+                                <div><strong>Semester:</strong> ${sem}</div>
+                            </div>
+                        </div>
+                        <div class="print-table-wrap">
+                            <table class="print-schedule-table">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2">No.</th>
+                                        <th rowspan="2">Subject Code</th>
+                                        <th rowspan="2">Description</th>
+                                        <th colspan="3" class="th-group th-f2f">FACE-TO-FACE</th>
+                                        <th colspan="2" class="th-group th-online">ONLINE</th>
+                                        <th rowspan="2">Teacher</th>
+                                    </tr>
+                                    <tr>
+                                        <th>Day</th>
+                                        <th>Time</th>
+                                        <th>Room</th>
+                                        <th>Day</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${buildPrintRows(rows)}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="print-signatures">
+                            <div class="sig-block"><p>Prepared by:</p><div class="sig-line"></div><p class="sig-title">Scheduling Administrator</p></div>
+                            <div class="sig-block"><p>Checked by:</p><div class="sig-line"></div><p class="sig-title">Program Head</p></div>
+                            <div class="sig-block"><p>Approved by:</p><div class="sig-line"></div><p class="sig-title">Authorized School Official</p></div>
+                        </div>
+                    `;
+                    printContent.appendChild(sectionWrapper);
+                }
 
                 lastFocusedBeforeModal = document.activeElement;
                 printModal.hidden = false;
@@ -1182,7 +1303,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     const focusable = focusableInModal();
                     if (focusable.length === 0) {
                         event.preventDefault();
-                        printDialog?.focus();
                         return;
                     }
                     const first = focusable[0];
@@ -1223,9 +1343,25 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             saveButton.addEventListener("click", saveSchedule);
             regenerateButton.addEventListener("click", regeneratePreview);
             replaceButton.addEventListener("click", confirmReplacement);
-            searchInput.addEventListener("input", render);
 
-            // Initialize standard DOM plus Custom UI Components
+            // Re-bind listeners including search suggestion
+            searchInput.addEventListener("input", () => {
+                renderSearchSuggestions();
+                render();
+            });
+            searchInput.addEventListener("focus", renderSearchSuggestions);
+            document.addEventListener("click", (e) => {
+                if (!searchInput.contains(e.target) && !searchSuggestions.contains(e.target)) {
+                    searchSuggestions.hidden = true;
+                }
+            });
+            searchInput.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") searchSuggestions.hidden = true;
+            });
+
+            yearFilterSelect?.addEventListener("change", render);
+            typeFilterSelect?.addEventListener("change", render);
+
             upgradeSelects();
             loadCatalog();
         })();

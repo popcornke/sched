@@ -64,7 +64,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
             <div>
               <p class="bcp-exam__eyebrow"><span class="bcp-exam__eyebrow-dot"></span> BCP CLASS SCHEDULING SYSTEM</p>
               <h1>Exam Timetable Generator<span class="bcp-exam__title-dot">.</span></h1>
-              <p>Set one BCP-wide three-day examination period, then generate each program separately. Every saved program must use the same unified dates.</p>
+              <p>Set one BCP-wide three-day examination period. Selecting a program automatically uses these dates. If only the dates change, saved room, proctor, time, subject, and Exam Day assignments are preserved and revalidated before the update is committed.</p>
             </div>
             <span class="bcp-exam__chip" title="Examination Management">DEMO · EXAM MANAGEMENT</span>
           </header>
@@ -160,7 +160,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
 
  const $=id=>document.getElementById(id);
  let result=null; let pending=false; let hasSaved=false; let activeExamBatchId=null;
- let unifiedConfigured=false; let unifiedLocked=false; let examDatesDirty=false; let unifiedActivePrograms=[];
+ let unifiedConfigured=false; let unifiedLocked=false; let examDatesDirty=false; let unifiedActivePrograms=[]; let unifiedActiveBatchCount=0; let savedUnifiedDates=[]; let calendarConstraints=null;
  
  const make=(tag,text,cls)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
  const format=time=>{const [hh,mm]=String(time).split(':').map(Number);return `${hh%12||12}:${String(mm).padStart(2,'0')} ${hh>=12?'PM':'AM'}`;};
@@ -266,12 +266,21 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  }
  
  const currentDates=()=>[1,2,3].map(i=>$('examDate'+i).value);
- const datesValid=dates=>!dates.some(x=>!x)&&new Set(dates).size===3&&dates[0]<dates[1]&&dates[1]<dates[2];
+ const isSchoolDay=iso=>{const d=new Date(iso+'T12:00:00');return !Number.isNaN(d.getTime())&&d.getDay()!==0;};
+ const datesValid=dates=>!dates.some(x=>!x)&&new Set(dates).size===3&&dates[0]<dates[1]&&dates[1]<dates[2]&&dates.every(isSchoolDay)&&(!calendarConstraints?.min_date||dates.every(x=>x>=calendarConstraints.min_date))&&(!calendarConstraints?.max_date||dates.every(x=>x<=calendarConstraints.max_date));
  
  function applyDateLock(){
-   for(let i=1;i<=3;i++)$('examDate'+i).disabled=unifiedLocked;
-   $('examSetDates').disabled=pending||unifiedLocked;
-   $('examSetDates').innerHTML=unifiedLocked?'<i class="fa-solid fa-lock"></i> Unified Exam Dates Locked':(unifiedConfigured?'<i class="fa-solid fa-calendar-check"></i> Update Unified Exam Dates':'<i class="fa-solid fa-calendar-plus"></i> Set Unified Exam Dates');
+   for(let i=1;i<=3;i++)$('examDate'+i).disabled=pending;
+   $('examSetDates').disabled=pending;
+   $('examSetDates').innerHTML=unifiedConfigured?'<i class="fa-solid fa-calendar-pen"></i> Update Unified Exam Dates':'<i class="fa-solid fa-calendar-plus"></i> Set Unified Exam Dates';
+ }
+
+ function applyCalendarConstraints(){
+   for(let i=1;i<=3;i++){
+     const input=$('examDate'+i);
+     if(calendarConstraints?.min_date)input.min=calendarConstraints.min_date;else input.removeAttribute('min');
+     if(calendarConstraints?.max_date)input.max=calendarConstraints.max_date;else input.removeAttribute('max');
+   }
  }
  
  function invalidatePreview(message='Examination configuration changed. Generate a fresh preview before saving.'){
@@ -284,20 +293,21 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
    if(!r.ok||data.success!==true)throw Error(data.message||data.status||'Exam request failed.');return data;}
    
  async function loadUnifiedPeriod(){
-   unifiedConfigured=false;unifiedLocked=false;examDatesDirty=false;unifiedActivePrograms=[];
+   unifiedConfigured=false;unifiedLocked=false;examDatesDirty=false;unifiedActivePrograms=[];unifiedActiveBatchCount=0;savedUnifiedDates=[];calendarConstraints=null;
    $('examSetDates').disabled=true;$('examGenerate').disabled=true;
    const periodId=$('examPeriod').value;
    if(!periodId)return;
    try{
      const data=await api('exam-period.php?period_id='+encodeURIComponent(periodId),'GET');
-     unifiedConfigured=Boolean(data.configured);unifiedLocked=Boolean(data.locked);unifiedActivePrograms=data.active_programs||[];
-     if(Array.isArray(data.exam_dates)&&data.exam_dates.length===3){for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];}
-     else{for(let i=1;i<=3;i++)$('examDate'+i).value='';}
-     applyDateLock();
+     unifiedConfigured=Boolean(data.configured);unifiedLocked=false;unifiedActivePrograms=data.active_programs||[];unifiedActiveBatchCount=Number(data.active_exam_batch_count||0);calendarConstraints=data.calendar_constraints||null;
+     if(Array.isArray(data.exam_dates)&&data.exam_dates.length===3){savedUnifiedDates=[...data.exam_dates];for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];}
+     else{savedUnifiedDates=[];for(let i=1;i<=3;i++)$('examDate'+i).value='';}
+     applyCalendarConstraints();applyDateLock();
      $('examGenerate').disabled=!unifiedConfigured;
      if(unifiedConfigured){
-       const programs=unifiedActivePrograms.length?` Active exam programs: ${unifiedActivePrograms.join(', ')}.`:'';
-       setStatus(unifiedLocked?`Unified BCP exam dates are locked because ${data.active_exam_batch_count} ACTIVE exam batch(es) already exist.${programs}`:'Unified BCP exam dates are set. You may update them until the first ACTIVE exam timetable is saved.','info');
+       const programs=unifiedActivePrograms.length?` Programs: ${unifiedActivePrograms.join(', ')}.`:'';
+       if(unifiedActiveBatchCount>0)setStatus(`Unified BCP exam dates are set. ${unifiedActiveBatchCount} ACTIVE exam timetable(s) currently use these dates.${programs} If you change only the dates, the system will keep the saved room, proctor, time, subject, and Exam Day assignments, remap them to the new dates, and revalidate before saving.`,'info');
+       else setStatus('Unified BCP exam dates are set. You may update them even if other programs have not generated schedules yet.','info');
      }else{
        setStatus('Choose Day 1, review the auto-filled Day 2 and Day 3, then click Set Unified Exam Dates before generating.','info');
      }
@@ -305,17 +315,51 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  }
  
  async function saveUnifiedPeriod(){
-   if(pending||unifiedLocked)return;
+   if(pending)return;
    const dates=currentDates();
-   if(!datesValid(dates)){setStatus('Choose three different Monday–Saturday dates in ascending order.','error');return;}
+   if(!datesValid(dates)){
+     const range=calendarConstraints?.min_date&&calendarConstraints?.max_date?` Dates must also be within ${calendarConstraints.min_date} to ${calendarConstraints.max_date}.`:'';
+     setStatus('Choose three different Monday–Saturday dates in ascending order.'+range,'error');return;
+   }
+   const changing=!savedUnifiedDates.length||dates.some((d,i)=>d!==savedUnifiedDates[i]);
+   let confirmRetime=false;
+   if(changing&&unifiedActiveBatchCount>0){
+     const programs=unifiedActivePrograms.length?` (${unifiedActivePrograms.join(', ')})`:'';
+     const ok=window.confirm(`Change the unified examination dates for ${unifiedActiveBatchCount} ACTIVE exam timetable(s)${programs}? The system will KEEP the existing room, proctor, time, subject, section, and Exam Day 1/2/3 assignments. Only the actual dates will move, then every saved timetable will be revalidated. No solver regeneration is performed when validation passes.`);
+     if(!ok)return;
+     confirmRetime=true;
+   }
    pending=true;$('examSetDates').disabled=true;$('examGenerate').disabled=true;
-   setStatus('Saving the BCP-wide examination dates for this academic period…','loading');
+   setStatus(changing&&unifiedActiveBatchCount>0?'Moving the existing saved exam timetable(s) to the new dates and revalidating all assignments…':(changing?'Saving the BCP-wide examination dates for this academic period…':'Checking the saved examination calendar…'),'loading');
    try{
-     const data=await api('exam-period.php','POST',{period_id:Number($('examPeriod').value),exam_dates:dates});
-     unifiedConfigured=true;unifiedLocked=Boolean(data.locked);examDatesDirty=false;unifiedActivePrograms=data.active_programs||[];
-     if(Array.isArray(data.exam_dates))for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];
-     applyDateLock();$('examGenerate').disabled=false;
-     setStatus(unifiedLocked?'Unified examination dates are already locked and unchanged.':'Unified BCP examination dates saved. All program exam generators for this academic period must use these same dates.','success');
+     const data=await api('exam-period.php','POST',{period_id:Number($('examPeriod').value),exam_dates:dates,confirm_retime:confirmRetime});
+     unifiedConfigured=true;unifiedLocked=false;examDatesDirty=false;unifiedActivePrograms=data.active_programs||[];unifiedActiveBatchCount=Number(data.active_exam_batch_count||0);calendarConstraints=data.calendar_constraints||calendarConstraints;
+     if(Array.isArray(data.exam_dates)){savedUnifiedDates=[...data.exam_dates];for(let i=1;i<=3;i++)$('examDate'+i).value=data.exam_dates[i-1];}
+     applyCalendarConstraints();applyDateLock();$('examGenerate').disabled=false;
+     if(Number(data.retimed_exam_batch_count||0)>0){
+       const affected=(data.retimed_programs||[]).length?` Programs: ${(data.retimed_programs||[]).join(', ')}.`:'';
+
+       // Date-only updates must never make the currently displayed saved timetable
+       // disappear. The server has already updated and revalidated every ACTIVE
+       // batch in one transaction, so update the in-memory view in place as well.
+       if(hasSaved && result && Array.isArray(result.assignments)){
+         result.exam_dates=[...data.exam_dates];
+         for(const assignment of result.assignments){
+           const day=Number(assignment.exam_day||0);
+           if(day>=1 && day<=3) assignment.exam_date=data.exam_dates[day-1];
+         }
+         render(result);
+         $('examReportBadge').textContent='SAVED DEMO · BATCH #'+activeExamBatchId;
+         $('examReportBadge').classList.remove('bcp-exam__chip--warning');
+         $('examPrint').disabled=false;
+       }
+
+       setStatus(`Exam dates updated successfully for ALL existing ACTIVE exam programs. ${data.retimed_exam_batch_count} saved timetable(s) kept the SAME batch, room, proctor, time, subject, section, and Exam Day assignments; only the actual dates changed.${affected} No exam data was deleted or regenerated.`,'success');
+     }else if(data.status==='UNIFIED_EXAM_DATES_UNCHANGED'){
+       setStatus('Unified BCP examination dates are unchanged and valid for this academic period.','success');
+     }else{
+       setStatus('Unified BCP examination dates saved. Selecting a program will automatically use these dates.','success');
+     }
    }catch(e){setStatus(e.message,'error');}
    finally{pending=false;applyDateLock();$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;}
  }
@@ -327,13 +371,16 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
    if(!program){setStatus('Choose a program.','info');return;}
    try{const data=await api('exam-saved.php?period_id='+encodeURIComponent($('examPeriod').value)+'&program='+encodeURIComponent(program),'GET');
      if(data.has_saved_exams){hasSaved=true;activeExamBatchId=Number(data.exam_batch_id);result=data;data.solver_status='SAVED';
-       for(let i=1;i<=3;i++){$('examDate'+i).value=data.exam_dates[i-1];}
+       const authoritativeDates=savedUnifiedDates.length===3?savedUnifiedDates:data.exam_dates;
+       if(savedUnifiedDates.length===3&&Array.isArray(data.exam_dates)&&data.exam_dates.some((d,i)=>d!==savedUnifiedDates[i]))throw Error('Saved exam batch dates do not match the current academic-period exam calendar. Reload the page and review the database before continuing.');
+       for(let i=1;i<=3;i++){$('examDate'+i).value=authoritativeDates[i-1];}
+       data.exam_dates=[...authoritativeDates];
        render(data);$('examReportBadge').textContent='SAVED DEMO · BATCH #'+data.exam_batch_id;
        $('examReportBadge').classList.remove('bcp-exam__chip--warning');
        $('examGenerate').disabled=false;$('examGenerate').innerHTML='<i class="fa-solid fa-code-compare"></i> Regenerate Exam Preview';$('examSave').innerHTML='<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO';
        setStatus(`Loaded ACTIVE DEMO exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`,'success');
      }else{$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;
-       if(unifiedConfigured)setStatus(unifiedLocked?'Unified BCP exam dates are locked. Generate this program using the same school-wide dates.':'Unified dates are ready. Generate the program preview when ready.','info');}
+       if(unifiedConfigured)setStatus(unifiedActiveBatchCount>0?'Unified dates are ready. Date-only changes preserve and revalidate existing saved assignments; regeneration is not required when the saved timetable remains valid on the new dates.':'Unified dates are ready. Generate the program preview when ready.','info');}
    }catch(e){setStatus(e.message,'error');}
  }
  
@@ -401,15 +448,15 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
  catch(e){setStatus(e.message,'error');}finally{pending=false;$('examGenerate').disabled=!unifiedConfigured||examDatesDirty;applyDateLock();}
  });
  
- $('examPeriod').addEventListener('change',async()=>{if(!pending){await loadUnifiedPeriod();await loadSaved();}});$('examProgram').addEventListener('change',async()=>{if(!pending)await loadSaved();});
+ $('examPeriod').addEventListener('change',async()=>{if(!pending){await loadUnifiedPeriod();await loadSaved();}});$('examProgram').addEventListener('change',async()=>{if(!pending){await loadUnifiedPeriod();await loadSaved();}});
  $('examSetDates').addEventListener('click',saveUnifiedPeriod);$('examDate1').addEventListener('change',()=>{
-   if(pending||unifiedLocked)return;
+   if(pending)return;
    const d1=$('examDate1').value;
    if(d1){const d2=nextSchoolDay(d1);$('examDate2').value=d2;$('examDate3').value=nextSchoolDay(d2);}
    examDatesDirty=true;invalidatePreview('Day 2 and Day 3 were auto-filled. Review the dates, then save the unified BCP examination period.');
  });
  for(const id of ['examDate2','examDate3']){
-   $(id).addEventListener('change',()=>{if(pending||unifiedLocked)return;examDatesDirty=true;invalidatePreview('Unified examination dates changed. Save them before generating.');});
+   $(id).addEventListener('change',()=>{if(pending)return;examDatesDirty=true;invalidatePreview('Unified examination dates changed. Save them before generating.');});
  }
  $('examWindow').addEventListener('change',()=>{if(!pending)invalidatePreview('Exam hours changed. Generate a fresh preview before saving.');});
  

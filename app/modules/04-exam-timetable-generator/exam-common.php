@@ -81,6 +81,8 @@ function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
         SELECT
             academic_period_calendar_id,
             academic_period_id,
+            teaching_start_date,
+            teaching_end_date,
             exam_day_1,
             exam_day_2,
             exam_day_3,
@@ -127,16 +129,20 @@ function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
         }
 
         if ($present === 3) {
-            $calendarDates = exDates(
-                array_map('strval', $rawDates)
+            $calendarDates = exValidateExamDatesForPeriodContext(
+                exDates(array_map('strval', $rawDates)),
+                $periodRows[0],
+                $calendarRows[0]
             );
         }
     }
 
     /*
      * Read every ACTIVE exam batch for the same academic period.
-     * Once at least one program has an ACTIVE exam timetable,
-     * the common BCP exam dates become locked.
+     * ACTIVE batches no longer make the calendar read-only. If the
+     * administrator later changes the school-wide dates, exam-period.php
+     * preserves their assignments, remaps exam_date by Exam Day 1/2/3, and
+     * revalidates the saved timetables atomically before committing.
      */
     $activeBatches = exRows(
         $pdo,
@@ -164,11 +170,15 @@ function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
     $activePrograms = [];
 
     foreach ($activeBatches as $batch) {
-        $dates = exDates([
-            (string)$batch['exam_day_1'],
-            (string)$batch['exam_day_2'],
-            (string)$batch['exam_day_3']
-        ]);
+        $dates = exValidateExamDatesForPeriodContext(
+            exDates([
+                (string)$batch['exam_day_1'],
+                (string)$batch['exam_day_2'],
+                (string)$batch['exam_day_3']
+            ]),
+            $periodRows[0],
+            $calendarRows[0] ?? null
+        );
 
         $key = implode('|', $dates);
 
@@ -208,9 +218,11 @@ function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
         );
     }
 
-    $resolvedDates = $activeDates ?? $calendarDates;
+    // The academic-period calendar is the authoritative source when present.
+    // ACTIVE exam batches are snapshots kept in sync with calendar date-only updates.
+    $resolvedDates = $calendarDates ?? $activeDates;
 
-    $locked = count($activeBatches) > 0;
+    $locked = false;
 
     return [
         'period' => $periodRows[0],
@@ -224,13 +236,20 @@ function exUnifiedExamPeriod(PDO $pdo, int $periodId): array
             $locked,
 
         'source' =>
-            $locked
-                ? 'ACTIVE_EXAM_BATCHES'
-                : (
-                    $calendarDates !== null
-                        ? 'ACADEMIC_PERIOD_CALENDAR'
-                        : 'NONE'
-                ),
+            $calendarDates !== null
+                ? 'ACADEMIC_PERIOD_CALENDAR'
+                : ($activeDates !== null ? 'ACTIVE_EXAM_BATCHES' : 'NONE'),
+
+        'calendar_constraints' =>
+            exCalendarConstraintsFromContext($periodRows[0], $calendarRows[0] ?? null),
+
+        'date_change_revalidates_saved_timetables' =>
+            count($activeBatches) > 0,
+
+        // Compatibility flag for older UI code. Date-only changes now attempt
+        // in-place remapping first and do not require solver regeneration when valid.
+        'date_change_requires_regeneration' =>
+            false,
 
         'active_exam_batch_count' =>
             count($activeBatches),
@@ -283,6 +302,86 @@ function exDates(array $raw): array
     return $result;
 }
 
+/**
+ * Calendar limits that can be enforced without inventing semester dates.
+ * The academic-year label supplies the outer date scope. If a teaching start
+ * date exists, examinations cannot be placed before instruction begins.
+ * teaching_end_date is returned for UI/audit context but is not used as a
+ * hard maximum because final examinations can legitimately follow it.
+ */
+function exCalendarConstraintsFromContext(array $period, ?array $calendar): array
+{
+    $academicYear = (string)($period['academic_year'] ?? '');
+    if (!preg_match('/^(\d{4})-(\d{4})$/', $academicYear, $m)) {
+        exFail(409, 'ACADEMIC_YEAR_FORMAT_INVALID', 'Academic year must use YYYY-YYYY format before examination dates can be configured.');
+    }
+
+    $startYear = (int)$m[1];
+    $endYear = (int)$m[2];
+    if ($endYear < $startYear || $endYear > $startYear + 1) {
+        exFail(409, 'ACADEMIC_YEAR_RANGE_INVALID', 'Academic year range is invalid.');
+    }
+
+    $scopeMin = sprintf('%04d-01-01', $startYear);
+    $scopeMax = sprintf('%04d-12-31', $endYear);
+    $teachingStart = isset($calendar['teaching_start_date']) && $calendar['teaching_start_date'] !== ''
+        ? (string)$calendar['teaching_start_date']
+        : null;
+    $teachingEnd = isset($calendar['teaching_end_date']) && $calendar['teaching_end_date'] !== ''
+        ? (string)$calendar['teaching_end_date']
+        : null;
+
+    foreach (['teaching_start_date' => $teachingStart, 'teaching_end_date' => $teachingEnd] as $label => $value) {
+        if ($value === null) continue;
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        if (!$date || $date->format('Y-m-d') !== $value) {
+            exFail(409, 'ACADEMIC_CALENDAR_INVALID', 'The selected academic period contains an invalid ' . $label . '.');
+        }
+    }
+    if ($teachingStart !== null && $teachingEnd !== null && $teachingStart > $teachingEnd) {
+        exFail(409, 'ACADEMIC_CALENDAR_INVALID', 'Teaching start date cannot be later than teaching end date.');
+    }
+
+    $minDate = $teachingStart !== null && $teachingStart > $scopeMin ? $teachingStart : $scopeMin;
+
+    return [
+        'min_date' => $minDate,
+        'max_date' => $scopeMax,
+        'academic_year_start' => $scopeMin,
+        'academic_year_end' => $scopeMax,
+        'teaching_start_date' => $teachingStart,
+        'teaching_end_date' => $teachingEnd,
+    ];
+}
+
+function exValidateExamDatesForPeriodContext(array $dates, array $period, ?array $calendar): array
+{
+    $constraints = exCalendarConstraintsFromContext($period, $calendar);
+    foreach ($dates as $date) {
+        if ($date < $constraints['min_date'] || $date > $constraints['max_date']) {
+            exFail(400, 'EXAM_DATE_OUTSIDE_ACADEMIC_CALENDAR',
+                'Examination dates must fall inside the selected academic-period calendar (' .
+                $constraints['min_date'] . ' to ' . $constraints['max_date'] . ').');
+        }
+    }
+    return $dates;
+}
+
+function exValidateExamDatesForPeriod(PDO $pdo, int $periodId, array $rawDates): array
+{
+    $dates = exDates($rawDates);
+    $rows = exRows($pdo, "SELECT ap.academic_period_id,ap.academic_year,ap.semester,ap.period_status,
+            c.teaching_start_date,c.teaching_end_date
+        FROM academic_periods ap
+        LEFT JOIN academic_period_calendars c ON c.academic_period_id=ap.academic_period_id
+        WHERE ap.academic_period_id=:period AND ap.period_status='DEMO'
+        LIMIT 1", ['period' => $periodId]);
+    if (count($rows) !== 1) {
+        exFail(404, 'ACADEMIC_PERIOD_NOT_FOUND', 'Selected DEMO academic period was not found.');
+    }
+    return exValidateExamDatesForPeriodContext($dates, $rows[0], $rows[0]);
+}
+
 /** Every program generator must use exactly the same BCP-wide dates. */
 function exAssertUnifiedDates(PDO $pdo, int $periodId, array $requestedDates): array
 {
@@ -298,10 +397,8 @@ function exAssertUnifiedDates(PDO $pdo, int $periodId, array $requestedDates): a
     if ($requested !== $unified['exam_dates']) {
         exFail(
             409,
-            $unified['locked'] ? 'EXAM_DATES_LOCKED' : 'EXAM_DATES_MUST_MATCH_UNIFIED_PERIOD',
-            $unified['locked']
-                ? 'Examination dates are locked because an ACTIVE program exam timetable already exists. All programs must use the same BCP exam dates.'
-                : 'The selected dates do not match the saved unified BCP examination period. Update the unified dates first.'
+            'EXAM_DATES_MUST_MATCH_UNIFIED_PERIOD',
+            'The selected dates do not match the saved unified BCP examination period. Save the updated school-wide exam dates first.'
         );
     }
     return $unified;

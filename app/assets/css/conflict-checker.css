@@ -528,3 +528,178 @@ body.bcp-conflict-page {
 @media (prefers-reduced-motion: reduce) {
     .bcp-conflict__btn-primary, .bcp-conflict__header, .bcp-conflict__panel { transition: none !important; animation: none !important; }
 }
+/* ============================================================
+   3. AUTOMATIC CONFLICT REPAIR
+   ============================================================ */
+.bcp-conflict__repair-actions {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid #d9e7ff;
+    border-radius: 14px;
+    background: #f7faff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+.bcp-conflict__repair-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: min(100%, 360px);
+    flex: 1;
+}
+.bcp-conflict__repair-copy strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #173b79;
+}
+.bcp-conflict__repair-copy span {
+    color: #68758d;
+    font-size: 12px;
+}
+.bcp-conflict__repair-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    min-width: min(100%, 420px);
+}
+.bcp-conflict__repair-controls .bcp-conflict__control { min-width: 190px; }
+.bcp-conflict__issue-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+.bcp-conflict__solve-btn,
+.bcp-conflict__btn-secondary,
+.bcp-conflict__icon-btn {
+    font-family: inherit;
+    cursor: pointer;
+}
+.bcp-conflict__solve-btn {
+    border: 1px solid #bfd5fb;
+    background: #eef5ff;
+    color: #1a3a8c;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 9px;
+    font-weight: 750;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.bcp-conflict__solve-btn:hover { background: #e2eeff; }
+.bcp-conflict__modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+}
+.bcp-conflict__modal[hidden] { display: none !important; }
+.bcp-conflict__modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 32, 61, 0.46);
+    backdrop-filter: blur(6px);
+}
+.bcp-conflict__modal-card {
+    position: relative;
+    width: min(820px, 100%);
+    max-height: min(82vh, 820px);
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #e1e8f3;
+    border-radius: 20px;
+    box-shadow: 0 28px 70px rgba(16, 45, 99, 0.24);
+    padding: 24px;
+}
+.bcp-conflict__modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+.bcp-conflict__modal-head h2 {
+    margin: 7px 0 0;
+    color: #102d63;
+    font-size: 24px;
+}
+.bcp-conflict__icon-btn {
+    width: 38px;
+    height: 38px;
+    border: 1px solid #e1e8f3;
+    border-radius: 10px;
+    background: #fff;
+    color: #52637d;
+}
+.bcp-conflict__repair-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.bcp-conflict__repair-meta span {
+    border: 1px solid #e0e8f5;
+    background: #f8faff;
+    color: #41577b;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.bcp-conflict__repair-changes {
+    display: grid;
+    gap: 10px;
+}
+.bcp-conflict__repair-change {
+    border: 1px solid #e4eaf4;
+    border-radius: 13px;
+    padding: 14px;
+    background: #fbfcff;
+}
+.bcp-conflict__repair-change strong {
+    display: block;
+    color: #193867;
+    margin-bottom: 5px;
+}
+.bcp-conflict__repair-change p {
+    margin: 5px 0 0;
+    color: #66758c;
+    font-size: 12px;
+}
+.bcp-conflict__repair-fields {
+    display: inline-block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #117a59;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.bcp-conflict__modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+.bcp-conflict__btn-secondary {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 11px;
+    border: 1px solid #d6dfec;
+    background: #fff;
+    color: #475a76;
+    font-weight: 750;
+}
+@media (max-width: 720px) {
+    .bcp-conflict__repair-controls { width: 100%; flex-direction: column; align-items: stretch; }
+    .bcp-conflict__repair-controls .bcp-conflict__control { min-width: 0; }
+    .bcp-conflict__modal { padding: 12px; }
+    .bcp-conflict__modal-card { padding: 18px; }
+}

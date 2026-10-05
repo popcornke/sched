@@ -9,6 +9,7 @@ from ortools.sat.python import cp_model
 from app.scheduler import solve_schedule, MAX_SOLVE_SECONDS
 from app.conflict_checker import audit_schedule
 from app.exam_routes import router as exam_router
+from app.conflict_repair import router as conflict_repair_router
 
 
 app = FastAPI(
@@ -136,6 +137,14 @@ def run_schedule_job(
 
 app.include_router(
     exam_router
+)
+
+# ============================================
+# MODULE 3 — CONFLICT REPAIR
+# ============================================
+
+app.include_router(
+    conflict_repair_router
 )
 
 

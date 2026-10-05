@@ -117,7 +117,7 @@ SQL);
         'active_batches' => array_map(static fn($b) => ['batch_id' => (int)$b['batch_id'], 'program_code' => $b['program_code'], 'meetings' => (int)$b['meeting_count']], $batches),
         'audit' => $report,
         'database_write' => false,
-        'limitations' => ['Checks saved ACTIVE DEMO meeting records; does not regenerate a schedule, invoke the independent Python scheduling audit, or validate every scheduling policy (such as break placement and database time-slot eligibility).', 'Do not use this endpoint as a final authorization to save or replace a timetable.'],
+        'limitations' => ['This GET endpoint remains read-only and only detects saved-record conflicts. Automatic repair uses separate authenticated POST preview/apply endpoints.', 'Repair preserves section, subject, delivery mode, weekday, batch ID, and meeting IDs; it minimizes teacher/room/time changes and performs independent Python plus PHP final audits before commit.'],
     ]);
 } catch (Throwable $e) {
     error_log('BCP Module 3 audit: ' . $e->getMessage());

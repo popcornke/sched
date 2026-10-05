@@ -1,0 +1,49 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/conflict-repair-common.php';
+
+set_time_limit(180);
+try {
+    ccrGuardPost();
+    $body = json_decode(file_get_contents('php://input'), true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($body)) ccrReject(400, 'INVALID_REQUEST', 'Invalid repair request.');
+    $periodId = filter_var($body['period_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+    $programCode = strtoupper(trim((string)($body['program_code'] ?? '')));
+    if (!$periodId || $programCode === '') ccrReject(400, 'SELECTION_REQUIRED', 'Choose an academic period and program to repair.');
+
+    $pdo = getDatabase();
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $input = ccrLoadInput($pdo, (int)$periodId, $programCode);
+    $result = ccrCallPython('/api/conflicts/repair', $input, 120);
+    if (($result['success'] ?? false) !== true || ($result['status'] ?? '') !== 'CONFLICT_REPAIR_PREVIEW_READY'
+        || ($result['audit']['passed'] ?? false) !== true || !is_array($result['assignments'] ?? null)) {
+        ccrReject(422, 'REPAIR_PREVIEW_FAILED', (string)($result['message'] ?? 'The repair solver did not produce an approved preview.'));
+    }
+    ccrValidateAssignments($input, $result['assignments']);
+
+    $token = bin2hex(random_bytes(32));
+    ccrSession();
+    $_SESSION['conflict_repair_preview'] = [
+        'token' => $token,
+        'created_at' => time(),
+        'period_id' => (int)$periodId,
+        'program_code' => $programCode,
+        'program_id' => (int)$input['program']['program_id'],
+        'batch_id' => (int)$input['batch_id'],
+        'baseline_sha256' => (string)$input['baseline_sha256'],
+        'assignments' => $result['assignments'],
+        'changes' => $result['changes'] ?? [],
+    ];
+    session_write_close();
+
+    $result['repair_token'] = $token;
+    $result['save_ready'] = true;
+    $result['database_write'] = false;
+    ccrReply(200, $result);
+} catch (ConflictRepairRejected $e) {
+    ccrReply($e->http, ['success'=>false,'status'=>$e->codeName,'message'=>$e->getMessage(),'database_write'=>false]);
+} catch (Throwable $e) {
+    error_log('Conflict repair preview failed: ' . $e->getMessage());
+    ccrReply(500, ['success'=>false,'status'=>'CONFLICT_REPAIR_PREVIEW_FAILED','message'=>'Unable to build a safe conflict repair preview. Existing timetable is unchanged.','database_write'=>false]);
+}

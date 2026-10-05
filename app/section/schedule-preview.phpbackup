@@ -127,12 +127,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         <i class="fa-solid fa-circle-info bcp-preview__status-icon"></i>
                         <span>Loading program catalog…</span>
                     </div>
-
-                    <section id="bcpResourceDiagnosis"
-                        class="bcp-resource-diagnosis"
-                        aria-label="Scheduling resource diagnosis"
-                        aria-live="polite"
-                        hidden></section>
                 </section>
 
                 <!-- SUMMARY -->
@@ -399,102 +393,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 status.setAttribute("aria-live", type === "error" ? "assertive" : "polite");
             }
 
-            function clearResourceDiagnosis() {
-                const panel = el("bcpResourceDiagnosis");
-                if (!panel) return;
-                panel.replaceChildren();
-                panel.hidden = true;
-            }
-
-            function formatHours(value) {
-                const number = Number(value);
-                if (!Number.isFinite(number)) return "—";
-                return Number.isInteger(number)
-                    ? `${number} hrs/week`
-                    : `${number.toFixed(1)} hrs/week`;
-            }
-
-            function renderResourceDiagnosis(diagnosis) {
-                const panel = el("bcpResourceDiagnosis");
-                if (!panel || !diagnosis || typeof diagnosis !== "object") {
-                    clearResourceDiagnosis();
-                    return;
-                }
-
-                panel.replaceChildren();
-
-                const header = node("div", "bcp-resource-diagnosis__header");
-                const iconWrap = node("div", "bcp-resource-diagnosis__icon");
-                const icon = node("i", "fa-solid fa-user-group");
-                iconWrap.appendChild(icon);
-
-                const heading = node("div", "bcp-resource-diagnosis__heading");
-                heading.append(
-                    node("span", "bcp-resource-diagnosis__eyebrow", "Resource Diagnosis"),
-                    node("h3", "", diagnosis.title || "Scheduling resources are insufficient.")
-                );
-
-                if (diagnosis.proven === true) {
-                    heading.append(
-                        node(
-                            "p",
-                            "",
-                            "OR-Tools proved the timetable infeasible, and the capacity audit identified a mathematically sufficient cause."
-                        )
-                    );
-                } else {
-                    heading.append(
-                        node(
-                            "p",
-                            "",
-                            "OR-Tools proved the full constraint model infeasible. No single aggregate teacher-capacity shortage was independently proven."
-                        )
-                    );
-                }
-
-                header.append(iconWrap, heading);
-                panel.appendChild(header);
-
-                const grid = node("div", "bcp-resource-diagnosis__grid");
-
-                const metrics = [
-                    ["Required teaching load", formatHours(diagnosis.required_teacher_hours)],
-                    ["Available teacher capacity", formatHours(diagnosis.available_teacher_capacity_hours)],
-                    ["Capacity shortage", formatHours(diagnosis.teacher_shortage_hours)],
-                    ["Active teachers", String(diagnosis.active_teacher_count ?? "—")],
-                    ["Estimated minimum required", String(diagnosis.estimated_minimum_teacher_count ?? "—")],
-                ];
-
-                for (const [label, value] of metrics) {
-                    const item = node("div", "bcp-resource-diagnosis__metric");
-                    item.append(
-                        node("span", "", label),
-                        node("strong", "", value)
-                    );
-                    grid.appendChild(item);
-                }
-
-                panel.appendChild(grid);
-
-                const action = node("div", "bcp-resource-diagnosis__recommendation");
-                const actionIcon = node("i", "fa-solid fa-lightbulb");
-                const actionText = node("div");
-                actionText.append(
-                    node("strong", "", "Recommended action"),
-                    node("p", "", diagnosis.recommendation || "Review the scheduling resources and hard constraints, then try again.")
-                );
-                action.append(actionIcon, actionText);
-                panel.appendChild(action);
-
-                if (diagnosis.basis) {
-                    panel.appendChild(
-                        node("p", "bcp-resource-diagnosis__basis", diagnosis.basis)
-                    );
-                }
-
-                panel.hidden = false;
-            }
-
             function readableError(error, fallback) {
                 console.error("BCP schedule preview request failed:", error);
                 const message = String(error?.message || "").trim();
@@ -508,7 +406,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             function clearPreview() {
-                clearResourceDiagnosis();
                 assignments = [];
                 results.replaceChildren();
                 searchInput.value = "";
@@ -1048,27 +945,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             setStatus("OR-Tools is still optimizing. Reconnecting…", "loading");
                             continue;
                         }
-                        if (!response.ok) throw new Error(statusObj.message || statusObj.status || "The scheduling status request failed.");
+                        if (!response.ok || statusObj.success !== true) throw new Error(statusObj.message || statusObj.status || "The scheduling status request failed.");
                         transientFailures = 0;
-
-                        if (statusObj.success !== true) {
-                            const solverTerminalFailures = new Set([
-                                "INFEASIBLE",
-                                "MODEL_INVALID",
-                                "NO_SOLUTION_FOUND",
-                                "NO_ELIGIBLE_TEACHER",
-                                "NO_ELIGIBLE_ROOM",
-                                "NO_VALID_TIME_SLOTS"
-                            ]);
-
-                            if (solverTerminalFailures.has(statusObj.status)) {
-                                result = statusObj;
-                                break;
-                            }
-
-                            throw new Error(statusObj.message || statusObj.status || "The scheduling status request failed.");
-                        }
-
                         if (statusObj.status === "SCHEDULE_JOB_RUNNING") {
                             setStatus(statusObj.job_status === "QUEUED" ? "Scheduling job is queued…" : "OR-Tools is optimizing the timetable…", "loading");
                             continue;
@@ -1076,19 +954,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         result = statusObj;
                         break;
                     }
-                    if (result.status !== "DEMO_PREVIEW_GENERATED" || result.audit?.passed !== true) {
-                        if (result.status === "INFEASIBLE" && result.resource_diagnosis) {
-                            renderResourceDiagnosis(result.resource_diagnosis);
-                            setEmpty("OR-Tools could not produce a complete conflict-free timetable. Review the resource diagnosis above.");
-                            setStatus(result.message || "The current scheduling constraints are infeasible.", "error");
-                            generateButton.hidden = false;
-                            return;
-                        }
-
-                        throw new Error(result.message || "Generated timetable failed required preview checks.");
-                    }
-
-                    clearResourceDiagnosis();
+                    if (result.status !== "DEMO_PREVIEW_GENERATED" || result.audit?.passed !== true) throw new Error(result.message || "Generated timetable failed required preview checks.");
                     showAssignments(result.assignments);
                     showSummary(result.sections, `${result.returned_meetings} / ${result.required_meetings}`, "AUDIT_PASSED", `${Number(result.solve_seconds).toFixed(1)}s`);
                     if (result.save_ready_demo === true && typeof result.save_token === "string") {

@@ -56,7 +56,7 @@ function ccAudit(array $meetings, array $expected, array $memberships, array $ba
         $batchId = (int)($m['batch_id'] ?? 0);
         $key = $batchId . ':' . $sectionSubjectId;
         $actual[$key][$mode][] = $m;
-        $context = ['meeting'=>ccLabel($m)];
+        $context = ['meeting'=>ccLabel($m),'program_codes'=>[(string)($m['program_code']??'')]];
         if (!isset($activeBatchIds[$batchId])) {
             $add('INVALID_BATCH','Meeting references an unrecognized ACTIVE batch.',[$id],$context);
         }
@@ -107,7 +107,7 @@ function ccAudit(array $meetings, array $expected, array $memberships, array $ba
             && (int)$set['F2F'][0]['teacher_id'] !== (int)$set['ONLINE'][0]['teacher_id']) {
             $add('TEACHER_CONSISTENCY','F2F and Online for one section-subject have different teachers.',
                 [(int)$set['F2F'][0]['meeting_id'],(int)$set['ONLINE'][0]['meeting_id']],
-                ['section_subject_id'=>(int)$row['section_subject_id']]);
+                ['section_subject_id'=>(int)$row['section_subject_id'],'program_codes'=>[(string)($set['F2F'][0]['program_code']??'')]]);
         }
     }
     foreach ($actual as $key=>$set) {
@@ -134,7 +134,7 @@ function ccAudit(array $meetings, array $expected, array $memberships, array $ba
             if ($a['day_of_week']!==$b['day_of_week']) continue;
             $aId=(int)$a['meeting_id']; $bId=(int)$b['meeting_id'];
             $pair=[$aId,$bId];
-            $ctx=['first'=>ccLabel($a),'second'=>ccLabel($b)];
+            $ctx=['first'=>ccLabel($a),'second'=>ccLabel($b),'program_codes'=>array_values(array_unique([(string)($a['program_code']??''),(string)($b['program_code']??'')]))];
             $timeConflict=ccOverlap($a,$b);
             if ($timeConflict && (int)$a['teacher_id']!==0 && (int)$a['teacher_id']===(int)$b['teacher_id']) {
                 $add('TEACHER_OVERLAP','One professor is assigned to overlapping classes.',$pair,$ctx);

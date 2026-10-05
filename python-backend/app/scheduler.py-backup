@@ -25,7 +25,6 @@ EVEN SECTIONS:
 """
 
 import os
-import math
 
 from collections import defaultdict
 
@@ -387,170 +386,6 @@ def failure(status, message, **details):
     response.update(details)
 
     return response
-
-
-def build_infeasible_resource_diagnosis(
-    meetings,
-    sections,
-    teachers,
-):
-    """
-    Produce conservative, evidence-based diagnostics after CP-SAT proves
-    infeasibility.
-
-    This function does NOT replace OR-Tools and does NOT relax constraints.
-    It only reports a shortage when the aggregate capacity math itself proves
-    that a complete timetable is impossible.
-    """
-
-    program_ids = {
-        int(section["program_id"])
-        for section in sections.values()
-    }
-
-    relevant_teachers = [
-        teacher
-        for teacher in teachers.values()
-        if int(teacher["program_id"]) in program_ids
-    ]
-
-    required_teacher_slots = sum(
-        int(meeting["duration"])
-        for meeting in meetings
-    )
-
-    required_teacher_hours = (
-        required_teacher_slots
-        * SLOT_MINUTES
-        / 60.0
-    )
-
-    total_teacher_capacity_hours = sum(
-        float(teacher["max_weekly_hours"])
-        for teacher in relevant_teachers
-    )
-
-    teacher_shortage_hours = max(
-        0.0,
-        required_teacher_hours
-        - total_teacher_capacity_hours,
-    )
-
-    active_teacher_count = len(
-        relevant_teachers
-    )
-
-    max_teacher_weekly_hours = max(
-        (
-            float(teacher["max_weekly_hours"])
-            for teacher in relevant_teachers
-        ),
-        default=0.0,
-    )
-
-    estimated_minimum_teacher_count = None
-
-    if max_teacher_weekly_hours > 0:
-        estimated_minimum_teacher_count = int(
-            math.ceil(
-                required_teacher_hours
-                / max_teacher_weekly_hours
-            )
-        )
-
-    additional_teachers_needed = 0
-
-    if estimated_minimum_teacher_count is not None:
-        additional_teachers_needed = max(
-            0,
-            estimated_minimum_teacher_count
-            - active_teacher_count,
-        )
-
-    if teacher_shortage_hours > 0.0001:
-        teacher_word = (
-            "teacher"
-            if additional_teachers_needed == 1
-            else "teachers"
-        )
-
-        recommendation = (
-            f"Add at least {additional_teachers_needed} qualified "
-            f"{teacher_word} at the current weekly load limit, "
-            "or increase valid faculty capacity, then generate again."
-        )
-
-        return {
-            "proven": True,
-            "kind": "TEACHER_CAPACITY_SHORTAGE",
-            "primary_resource": "TEACHER",
-            "title": "Teacher capacity is insufficient.",
-            "required_teacher_hours": round(
-                required_teacher_hours,
-                2,
-            ),
-            "available_teacher_capacity_hours": round(
-                total_teacher_capacity_hours,
-                2,
-            ),
-            "teacher_shortage_hours": round(
-                teacher_shortage_hours,
-                2,
-            ),
-            "active_teacher_count": active_teacher_count,
-            "estimated_minimum_teacher_count":
-                estimated_minimum_teacher_count,
-            "additional_teachers_needed":
-                additional_teachers_needed,
-            "maximum_weekly_hours_per_teacher": round(
-                max_teacher_weekly_hours,
-                2,
-            ),
-            "recommendation": recommendation,
-            "basis": (
-                "The aggregate weekly teaching load is greater than "
-                "the combined weekly capacity of all active eligible "
-                "teachers. This shortage alone is sufficient to make "
-                "the timetable infeasible."
-            ),
-        }
-
-    return {
-        "proven": False,
-        "kind": "COMBINED_CONSTRAINT_INFEASIBILITY",
-        "primary_resource": "COMBINED",
-        "title": (
-            "No single aggregate teacher-capacity shortage "
-            "was proven."
-        ),
-        "required_teacher_hours": round(
-            required_teacher_hours,
-            2,
-        ),
-        "available_teacher_capacity_hours": round(
-            total_teacher_capacity_hours,
-            2,
-        ),
-        "teacher_shortage_hours": 0.0,
-        "active_teacher_count": active_teacher_count,
-        "estimated_minimum_teacher_count":
-            estimated_minimum_teacher_count,
-        "additional_teachers_needed": 0,
-        "maximum_weekly_hours_per_teacher": round(
-            max_teacher_weekly_hours,
-            2,
-        ),
-        "recommendation": (
-            "Review room availability, teacher-specific availability, "
-            "authorized-subject coverage, day patterns, fixed existing "
-            "schedules, and other hard constraints."
-        ),
-        "basis": (
-            "OR-Tools proved the complete model infeasible, but the "
-            "aggregate teacher-capacity check alone does not identify "
-            "a single proven shortage."
-        ),
-    }
 
 
 # ============================================
@@ -2324,32 +2159,11 @@ def solve_schedule(payload):
                 "INFEASIBLE"
             )
 
-            resource_diagnosis = (
-                build_infeasible_resource_diagnosis(
-                    meetings,
-                    sections,
-                    teachers,
-                )
+            message = (
+                "The optimizer proved that "
+                "the current scheduling "
+                "constraints are infeasible."
             )
-
-            if (
-                resource_diagnosis.get("kind")
-                == "TEACHER_CAPACITY_SHORTAGE"
-            ):
-
-                message = (
-                    "Schedule cannot be generated: "
-                    "teacher capacity is insufficient "
-                    "for the required weekly teaching load."
-                )
-
-            else:
-
-                message = (
-                    "The optimizer proved that "
-                    "the current scheduling "
-                    "constraints are infeasible."
-                )
 
         elif status == cp_model.MODEL_INVALID:
 
@@ -2394,12 +2208,6 @@ def solve_schedule(payload):
             returned_meetings=0,
 
             school_wide_validation_complete=False,
-
-            resource_diagnosis=(
-                resource_diagnosis
-                if status == cp_model.INFEASIBLE
-                else None
-            ),
 
         )
         

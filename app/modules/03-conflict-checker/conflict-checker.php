@@ -62,7 +62,7 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
             <h1>Conflict Checker<span class="bcp-conflict__title-dot">.</span></h1>
             <p>Check saved class meetings across all ACTIVE DEMO programs in the selected academic period.</p>
           </div>
-          <span class="bcp-conflict__tag">DEMO · READ ONLY</span>
+          <span class="bcp-conflict__tag">DEMO · REPAIR ENABLED</span>
         </header>
         
         <section class="bcp-conflict__panel bcp-conflict__toolbar" aria-label="Audit settings">
@@ -85,6 +85,23 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
           </div>
           <p id="ccScope" class="bcp-conflict__muted"></p>
           <div id="ccWarnings" class="bcp-conflict__warnings" hidden></div>
+          <div id="ccRepairActions" class="bcp-conflict__repair-actions" hidden>
+            <div class="bcp-conflict__repair-copy">
+              <strong><i class="fa-solid fa-screwdriver-wrench"></i> Automatic repair available</strong>
+              <span>OR-Tools keeps section, subject, delivery mode, weekday, batch, and meeting IDs. It changes only teacher, room, or time when required.</span>
+            </div>
+            <div class="bcp-conflict__repair-controls">
+              <div class="bcp-conflict__control">
+                <label for="ccRepairProgram">Program to repair</label>
+                <div class="bcp-custom-select-wrapper">
+                  <select id="ccRepairProgram"></select>
+                </div>
+              </div>
+              <button type="button" id="ccSolveAll" class="bcp-conflict__btn-primary">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Solve All Conflicts
+              </button>
+            </div>
+          </div>
         </section>
         
         <section id="ccFindings" class="bcp-conflict__panel" hidden>
@@ -112,7 +129,28 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
           <div id="ccIssueList" class="bcp-conflict__issues"></div>
         </section>
         
-        <p class="bcp-conflict__footer">This read-only report checks saved records. It does not rerun the Python optimizer or replace the independent pre-save audit.</p>
+        <p class="bcp-conflict__footer">Conflict detection remains school-wide. Automatic repair is previewed first, independently audited, then applied only after confirmation. Existing batch and meeting identities are preserved.</p>
+      </div>
+
+      <div id="ccRepairModal" class="bcp-conflict__modal" hidden aria-hidden="true">
+        <div class="bcp-conflict__modal-backdrop" data-close-repair></div>
+        <section class="bcp-conflict__modal-card" role="dialog" aria-modal="true" aria-labelledby="ccRepairTitle">
+          <div class="bcp-conflict__modal-head">
+            <div>
+              <p class="bcp-conflict__eyebrow"><span class="bcp-conflict__eyebrow-dot"></span> CONFLICT REPAIR PREVIEW</p>
+              <h2 id="ccRepairTitle">Review automatic repair</h2>
+            </div>
+            <button type="button" id="ccRepairClose" class="bcp-conflict__icon-btn" aria-label="Close repair preview"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div id="ccRepairMeta" class="bcp-conflict__repair-meta"></div>
+          <div id="ccRepairChanges" class="bcp-conflict__repair-changes"></div>
+          <div class="bcp-conflict__modal-actions">
+            <button type="button" id="ccRepairCancel" class="bcp-conflict__btn-secondary">Cancel</button>
+            <button type="button" id="ccRepairApply" class="bcp-conflict__btn-primary">
+              <i class="fa-solid fa-check"></i> Apply Repair
+            </button>
+          </div>
+        </section>
       </div>
     </main>
 
@@ -136,6 +174,8 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
   const $ = id => document.getElementById(id);
   let report = null;
   let requestId = 0;
+  let repairPreview = null;
+  const repairableTypes = new Set(['ROOM_OVERLAP','TEACHER_OVERLAP','SECTION_OVERLAP','SUBJECT_OVERLAP','SHARED_STUDENT_OVERLAP','ROOM_CAPACITY','ROOM_PROGRAM_MISMATCH','ROOM_MODE_MISMATCH','INVALID_TIME','TEACHER_CONSISTENCY']);
   
   const node = (tag, value, cls='') => {
     const el = document.createElement(tag);
@@ -241,6 +281,34 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
     if (!response.ok || data.success!==true) throw new Error(data.message || data.status || 'Unable to load audit.');
     return data;
   }
+
+  async function jsonPost(url, body) {
+    const response = await fetch(url,{
+      method:'POST',credentials:'same-origin',cache:'no-store',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify(body)
+    });
+    let data;
+    try { data=await response.json(); }
+    catch { throw new Error('API returned invalid JSON. Check the PHP error log.'); }
+    if (!response.ok || data.success!==true) throw new Error(data.message || data.detail || data.status || 'Request failed.');
+    return data;
+  }
+
+  function issuePrograms(issue) {
+    const programs = issue?.details?.program_codes;
+    return Array.isArray(programs) ? [...new Set(programs.filter(Boolean))] : [];
+  }
+
+  function affectedPrograms() {
+    if (!report) return [];
+    const set = new Set();
+    for (const issue of report.audit?.issues || []) {
+      if (!repairableTypes.has(issue.type)) continue;
+      issuePrograms(issue).forEach(p=>set.add(p));
+    }
+    return [...set].sort();
+  }
   
   function makeIssue(issue) {
     const item=node('article',undefined,'bcp-conflict__issue');
@@ -251,8 +319,20 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
     if (info.first) item.append(node('p',info.first,'bcp-conflict__detail'));
     if (info.second) item.append(node('p',info.second,'bcp-conflict__detail'));
     if (info.meeting) item.append(node('p',info.meeting,'bcp-conflict__detail'));
-    const other=Object.entries(info).filter(([key])=>!['first','second','meeting'].includes(key));
+    const other=Object.entries(info).filter(([key])=>!['first','second','meeting','program_codes'].includes(key));
     if (other.length) item.append(node('p',other.map(([key,value])=>key+': '+value).join(' · '),'bcp-conflict__detail'));
+    const programs=issuePrograms(issue);
+    if (repairableTypes.has(issue.type) && programs.length) {
+      const actions=node('div',undefined,'bcp-conflict__issue-actions');
+      programs.forEach(program=>{
+        const button=node('button',undefined,'bcp-conflict__solve-btn');
+        button.type='button';
+        button.innerHTML='<i class="fa-solid fa-wand-magic-sparkles"></i> Solve '+program;
+        button.addEventListener('click',()=>previewRepair(program));
+        actions.append(button);
+      });
+      item.append(actions);
+    }
     return item;
   }
   
@@ -294,11 +374,98 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
     
     $('ccType').replaceChildren(new Option('All issue types',''));
     options.forEach(t=>$('ccType').add(new Option(t+' ('+audit.issue_counts[t]+')',t)));$('ccSearch').value='';
+    const programs=affectedPrograms();
+    const repairActions=$('ccRepairActions');
+    const repairProgram=$('ccRepairProgram');
+    repairProgram.replaceChildren();
+    programs.forEach(program=>repairProgram.add(new Option(program,program)));
+    repairActions.hidden=!programs.length;
+    $('ccSolveAll').disabled=!programs.length;
     renderIssues();
     status(audit.total_issues+' issue(s) found in '+audit.checked_meetings+' saved meetings.'+(audit.warnings.length?' Coverage warnings need attention.':''),
       audit.total_issues?'error':audit.warnings.length?'warning':'success');
   }
   
+  function closeRepairModal() {
+    repairPreview=null;
+    $('ccRepairModal').hidden=true;
+    $('ccRepairModal').setAttribute('aria-hidden','true');
+    document.body.style.overflow='';
+  }
+
+  function showRepairPreview(data) {
+    repairPreview=data;
+    $('ccRepairMeta').replaceChildren();
+    $('ccRepairMeta').append(
+      node('span',`Program: ${data.program?.program_code || '—'}`),
+      node('span',`Batch #${data.batch_id}`),
+      node('span',`${data.changed_meetings || 0} meeting(s) changed`),
+      node('span','Final hard-conflict audit: PASSED')
+    );
+    const box=$('ccRepairChanges');
+    box.replaceChildren();
+    const changes=Array.isArray(data.changes)?data.changes:[];
+    if (!changes.length) {
+      box.append(node('div','No timetable field needs to change.','bcp-conflict__empty'));
+    } else {
+      changes.forEach(change=>{
+        const card=node('article',undefined,'bcp-conflict__repair-change');
+        const title=node('strong',`${change.section_code || 'Section'} · ${change.subject_code || 'Subject'} · ${change.delivery_mode || ''}`);
+        const fields=node('span','Changed: '+(change.fields_changed || []).join(', '),'bcp-conflict__repair-fields');
+        const before=change.before || {}, after=change.after || {};
+        const oldLine=`Before · Teacher ${before.teacher_name || before.teacher_id || '—'} · Room ${before.room_name || before.room_id || '—'} · ${before.day_of_week || ''} ${before.start_time || ''}–${before.end_time || ''}`;
+        const newLine=`After · Teacher ${after.teacher_name || after.teacher_id || '—'} · Room ${after.room_name || after.room_id || 'Online'} · ${after.day_of_week || ''} ${after.start_time || ''}–${after.end_time || ''}`;
+        card.append(title,fields,node('p',oldLine),node('p',newLine));
+        box.append(card);
+      });
+    }
+    $('ccRepairModal').hidden=false;
+    $('ccRepairModal').setAttribute('aria-hidden','false');
+    document.body.style.overflow='hidden';
+  }
+
+  async function previewRepair(program) {
+    if (!program || !$('ccPeriod').value) return;
+    $('ccSolveAll').disabled=true;
+    status(`Finding the minimum-change conflict repair for ${program}…`,'loading');
+    try {
+      const data=await jsonPost('./conflict-repair-preview.php',{
+        period_id:Number($('ccPeriod').value),
+        program_code:program
+      });
+      showRepairPreview(data);
+      status(`${program} repair preview passed the independent hard-conflict audit. Review the changes before applying.`,'success');
+    } catch(e) {
+      status(e.message,'error');
+    } finally {
+      $('ccSolveAll').disabled=!affectedPrograms().length;
+    }
+  }
+
+  async function applyRepair() {
+    if (!repairPreview?.repair_token) return;
+    const button=$('ccRepairApply');
+    button.disabled=true;
+    button.innerHTML='<i class="fa-solid fa-circle-notch fa-spin"></i> Applying repair…';
+    status('Rechecking current database facts and applying the approved repair…','loading');
+    try {
+      const data=await jsonPost('./conflict-repair-apply.php',{repair_token:repairPreview.repair_token,confirm:true});
+      closeRepairModal();
+      await run({notify:false});
+      status(`${data.program_code} repaired successfully. Remaining saved-schedule conflicts: ${data.remaining_conflicts}.`,'success');
+      window.BCPNotifications?.notify({
+        type:'success',title:'Schedule conflicts repaired',
+        message:`${data.program_code} · ${data.changed_meetings} meeting(s) adjusted · 0 remaining conflicts.`,
+        url:`${window.location.pathname}${window.location.search}`
+      });
+    } catch(e) {
+      status(e.message,'error');
+    } finally {
+      button.disabled=false;
+      button.innerHTML='<i class="fa-solid fa-check"></i> Apply Repair';
+    }
+  }
+
   async function run(options = {}) {
     const shouldNotify = options.notify === true;
     const seq=++requestId;
@@ -348,6 +515,12 @@ $role = (string) ($_SESSION['role'] ?? 'Admin');$initial = strtoupper(substr($_S
   $('ccRun').addEventListener('click', () => run({ notify: true }));
   $('ccPeriod').addEventListener('change', () => run({ notify: false }));
   $('ccType').addEventListener('change',renderIssues);$('ccSearch').addEventListener('input',renderIssues);
+  $('ccSolveAll').addEventListener('click',()=>previewRepair($('ccRepairProgram').value));
+  $('ccRepairApply').addEventListener('click',applyRepair);
+  $('ccRepairCancel').addEventListener('click',closeRepairModal);
+  $('ccRepairClose').addEventListener('click',closeRepairModal);
+  document.querySelectorAll('[data-close-repair]').forEach(el=>el.addEventListener('click',closeRepairModal));
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('ccRepairModal').hidden)closeRepairModal();});
   
   initialize();
 })();

@@ -1,7 +1,12 @@
 <?php
 declare(strict_types=1);
-/** Module 1: LOCAL DEMO ONLY. Read-only individual timetable. No student assignment logic. */
+/** Module 1: Authenticated read-only individual timetable. No student assignment logic. */
+require_once __DIR__ . '/../shared/auth.php';
 require_once __DIR__ . '/../config/database.php';
+
+// Railway-safe: allow remote access only for authenticated admin/scheduler sessions.
+authRequire(true, ['ADMIN', 'SCHEDULER']);
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -13,11 +18,7 @@ function studentReply(int $code, array $body): never {
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
     studentReply(405, ['success'=>false,'status'=>'METHOD_NOT_ALLOWED','message'=>'GET only.']);
 }
-// This API exposes person-level information. Use the app's authentication and
-// student-specific authorization before ever enabling OFFICIAL records or remote access.
-if (!in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1','::1'], true)) {
-    studentReply(403, ['success'=>false,'status'=>'LOCAL_DEMO_ONLY','message'=>'Student DEMO view is only available on localhost.']);
-}
+// Person-level data is protected by authRequire() above.
 $periodId = filter_var($_GET['period_id'] ?? 1, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
 if ($periodId === false) {
     studentReply(400, ['success'=>false,'status'=>'INVALID_PERIOD','message'=>'Invalid academic period ID.']);

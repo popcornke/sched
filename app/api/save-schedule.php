@@ -159,11 +159,24 @@ try {
     $pdo->beginTransaction();
 
     // Re-read the CURRENT database facts and saved schedules while holding the lock.
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        ? 'https'
-        : 'http';
+    $forwardedProto = strtolower(trim(
+    explode(
+        ',',
+        (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')
+    )[0]
+));
 
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scheme = (
+    $forwardedProto === 'https'
+    || (
+        !empty($_SERVER['HTTPS'])
+        && $_SERVER['HTTPS'] !== 'off'
+    )
+)
+    ? 'https'
+    : 'http';
+
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
     $url = $scheme . '://' . $host
         . dirname($_SERVER['SCRIPT_NAME'])

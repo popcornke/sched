@@ -25,6 +25,7 @@ EVEN SECTIONS:
 """
 
 import os
+import math
 
 from collections import defaultdict
 
@@ -154,7 +155,7 @@ def hours_to_slots(value):
 # ============================================
 
 def get_section_days(section_code, mode, section_type="REGULAR"):
-    """BSIT demo: major sections are flexible; regular/cluster retain odd/even."""
+    """Major sections are flexible; regular/cluster sections retain odd/even day patterns."""
     code = str(section_code)
     if len(code) != 5 or not code.isascii() or not code.isdigit() or int(code[-2:]) < 1:
         raise ValueError(f"Invalid section code: {code}")
@@ -388,6 +389,170 @@ def failure(status, message, **details):
     return response
 
 
+def build_infeasible_resource_diagnosis(
+    meetings,
+    sections,
+    teachers,
+):
+    """
+    Produce conservative, evidence-based diagnostics after CP-SAT proves
+    infeasibility.
+
+    This function does NOT replace OR-Tools and does NOT relax constraints.
+    It only reports a shortage when the aggregate capacity math itself proves
+    that a complete timetable is impossible.
+    """
+
+    program_ids = {
+        int(section["program_id"])
+        for section in sections.values()
+    }
+
+    relevant_teachers = [
+        teacher
+        for teacher in teachers.values()
+        if int(teacher["program_id"]) in program_ids
+    ]
+
+    required_teacher_slots = sum(
+        int(meeting["duration"])
+        for meeting in meetings
+    )
+
+    required_teacher_hours = (
+        required_teacher_slots
+        * SLOT_MINUTES
+        / 60.0
+    )
+
+    total_teacher_capacity_hours = sum(
+        float(teacher["max_weekly_hours"])
+        for teacher in relevant_teachers
+    )
+
+    teacher_shortage_hours = max(
+        0.0,
+        required_teacher_hours
+        - total_teacher_capacity_hours,
+    )
+
+    active_teacher_count = len(
+        relevant_teachers
+    )
+
+    max_teacher_weekly_hours = max(
+        (
+            float(teacher["max_weekly_hours"])
+            for teacher in relevant_teachers
+        ),
+        default=0.0,
+    )
+
+    estimated_minimum_teacher_count = None
+
+    if max_teacher_weekly_hours > 0:
+        estimated_minimum_teacher_count = int(
+            math.ceil(
+                required_teacher_hours
+                / max_teacher_weekly_hours
+            )
+        )
+
+    additional_teachers_needed = 0
+
+    if estimated_minimum_teacher_count is not None:
+        additional_teachers_needed = max(
+            0,
+            estimated_minimum_teacher_count
+            - active_teacher_count,
+        )
+
+    if teacher_shortage_hours > 0.0001:
+        teacher_word = (
+            "teacher"
+            if additional_teachers_needed == 1
+            else "teachers"
+        )
+
+        recommendation = (
+            f"Add at least {additional_teachers_needed} qualified "
+            f"{teacher_word} at the current weekly load limit, "
+            "or increase valid faculty capacity, then generate again."
+        )
+
+        return {
+            "proven": True,
+            "kind": "TEACHER_CAPACITY_SHORTAGE",
+            "primary_resource": "TEACHER",
+            "title": "Teacher capacity is insufficient.",
+            "required_teacher_hours": round(
+                required_teacher_hours,
+                2,
+            ),
+            "available_teacher_capacity_hours": round(
+                total_teacher_capacity_hours,
+                2,
+            ),
+            "teacher_shortage_hours": round(
+                teacher_shortage_hours,
+                2,
+            ),
+            "active_teacher_count": active_teacher_count,
+            "estimated_minimum_teacher_count":
+                estimated_minimum_teacher_count,
+            "additional_teachers_needed":
+                additional_teachers_needed,
+            "maximum_weekly_hours_per_teacher": round(
+                max_teacher_weekly_hours,
+                2,
+            ),
+            "recommendation": recommendation,
+            "basis": (
+                "The aggregate weekly teaching load is greater than "
+                "the combined weekly capacity of all active eligible "
+                "teachers. This shortage alone is sufficient to make "
+                "the timetable infeasible."
+            ),
+        }
+
+    return {
+        "proven": False,
+        "kind": "COMBINED_CONSTRAINT_INFEASIBILITY",
+        "primary_resource": "COMBINED",
+        "title": (
+            "No single aggregate teacher-capacity shortage "
+            "was proven."
+        ),
+        "required_teacher_hours": round(
+            required_teacher_hours,
+            2,
+        ),
+        "available_teacher_capacity_hours": round(
+            total_teacher_capacity_hours,
+            2,
+        ),
+        "teacher_shortage_hours": 0.0,
+        "active_teacher_count": active_teacher_count,
+        "estimated_minimum_teacher_count":
+            estimated_minimum_teacher_count,
+        "additional_teachers_needed": 0,
+        "maximum_weekly_hours_per_teacher": round(
+            max_teacher_weekly_hours,
+            2,
+        ),
+        "recommendation": (
+            "Review room availability, teacher-specific availability, "
+            "authorized-subject coverage, day patterns, fixed existing "
+            "schedules, and other hard constraints."
+        ),
+        "basis": (
+            "OR-Tools proved the complete model infeasible, but the "
+            "aggregate teacher-capacity check alone does not identify "
+            "a single proven shortage."
+        ),
+    }
+
+
 # ============================================
 # 7. MAIN SCHEDULING OPTIMIZER
 # ============================================
@@ -433,10 +598,12 @@ def solve_schedule(payload):
             missing_fields=missing_fields,
         )
 
-    if payload.get("program", {}).get("program_code") != "BSIT":
+    program_code = str(payload.get("program", {}).get("program_code", "")).upper()
+    supported_programs = {"BSIT", "BSOA"}
+    if program_code not in supported_programs:
         return failure(
             "PROGRAM_POLICY_NOT_CONFIGURED",
-            "Only BSIT-specific scheduling policies are configured in this demo solver.",
+            f"Scheduling policy is not configured for program {program_code or 'UNKNOWN'}.",
         )
 
     if payload.get("data_origin") != "DEMO":
@@ -722,8 +889,7 @@ def solve_schedule(payload):
             ):
                 continue
 
-            # Do not assign BSIT to rooms
-            # restricted to another program.
+            # Do not assign a section to rooms restricted to another program.
 
             room_program = room.get(
                 "program_id"
@@ -860,6 +1026,11 @@ def solve_schedule(payload):
     teacher_weekly_load = defaultdict(list)
 
     teacher_daily_load = defaultdict(list)
+
+    # Teachers that are genuinely usable by at least one generated meeting.
+    # Workload balancing is limited to this set so a teacher with no
+    # authorized/available subject is not treated as an optimization failure.
+    teacher_candidate_ids = set()
 
     section_f2f = defaultdict(list)
 
@@ -1074,6 +1245,8 @@ def solve_schedule(payload):
                     )
 
                 )
+
+                teacher_candidate_ids.add(teacher_id)
 
         if not eligible_teachers:
 
@@ -1381,7 +1554,7 @@ def solve_schedule(payload):
         for other in pair[1:]:
             model.Add(other["teacher_var"] == pair[0]["teacher_var"])
 
-    # BSIT fourth-year MAJOR: F2F and ONLINE cannot occur on the same day.
+    # Fourth-year MAJOR policy (used by BSIT): F2F and ONLINE cannot occur on the same day.
     for sec_id, sec in sections.items():
         if sec["section_type"] != "MAJOR" or int(sec["year_level"]) != 4:
             continue
@@ -1502,6 +1675,170 @@ def solve_schedule(payload):
                 ) <= daily_limit
 
             )
+
+    # ========================================
+    # 13.1 BALANCED FACULTY WORKLOAD (SOFT)
+    # ========================================
+
+    # Hard teacher rules above remain authoritative:
+    #   - subject authorization
+    #   - teacher availability
+    #   - no teacher overlap
+    #   - daily/weekly limits
+    #
+    # This objective only chooses among already valid assignments.
+    # Priority order:
+    #   1) minimize usable teachers left at zero load,
+    #   2) minimize the workload spread,
+    #   3) minimize total distance from the average load.
+    #
+    # A teacher is included only if they were an eligible candidate for at
+    # least one generated meeting. This avoids forcing workload onto faculty
+    # who have no authorized/available class in the selected timetable.
+
+    workload_teacher_ids = sorted(teacher_candidate_ids)
+    teacher_load_vars = {}
+    teacher_used_vars = {}
+    teacher_deviation_vars = {}
+
+    total_required_teacher_slots = sum(
+        meeting["duration"]
+        for meeting in meetings
+    )
+
+    workload_target_slots = (
+        int(round(
+            total_required_teacher_slots
+            / len(workload_teacher_ids)
+        ))
+        if workload_teacher_ids
+        else 0
+    )
+
+    for teacher_id in workload_teacher_ids:
+
+        weekly_limit = hours_to_slots(
+            teachers[teacher_id]["max_weekly_hours"]
+        )
+
+        load_var = model.NewIntVar(
+            0,
+            weekly_limit,
+            f"teacher_{teacher_id}_weekly_load_slots",
+        )
+
+        model.Add(
+            load_var
+            == sum(teacher_weekly_load[teacher_id])
+        )
+
+        used_var = model.NewBoolVar(
+            f"teacher_{teacher_id}_has_workload"
+        )
+
+        model.Add(load_var >= 1).OnlyEnforceIf(used_var)
+        model.Add(load_var == 0).OnlyEnforceIf(used_var.Not())
+
+        max_deviation = max(
+            workload_target_slots,
+            abs(weekly_limit - workload_target_slots),
+        )
+
+        deviation_var = model.NewIntVar(
+            0,
+            max_deviation,
+            f"teacher_{teacher_id}_workload_deviation",
+        )
+
+        model.AddAbsEquality(
+            deviation_var,
+            load_var - workload_target_slots,
+        )
+
+        teacher_load_vars[teacher_id] = load_var
+        teacher_used_vars[teacher_id] = used_var
+        teacher_deviation_vars[teacher_id] = deviation_var
+
+    workload_spread_var = None
+
+    if workload_teacher_ids:
+
+        max_weekly_slots = max(
+            hours_to_slots(
+                teachers[teacher_id]["max_weekly_hours"]
+            )
+            for teacher_id in workload_teacher_ids
+        )
+
+        min_load_var = model.NewIntVar(
+            0,
+            max_weekly_slots,
+            "minimum_teacher_weekly_load_slots",
+        )
+
+        max_load_var = model.NewIntVar(
+            0,
+            max_weekly_slots,
+            "maximum_teacher_weekly_load_slots",
+        )
+
+        model.AddMinEquality(
+            min_load_var,
+            list(teacher_load_vars.values()),
+        )
+
+        model.AddMaxEquality(
+            max_load_var,
+            list(teacher_load_vars.values()),
+        )
+
+        workload_spread_var = model.NewIntVar(
+            0,
+            max_weekly_slots,
+            "teacher_weekly_load_spread_slots",
+        )
+
+        model.Add(
+            workload_spread_var
+            == max_load_var - min_load_var
+        )
+
+        total_deviation_cap = sum(
+            max(
+                workload_target_slots,
+                abs(
+                    hours_to_slots(
+                        teachers[teacher_id]["max_weekly_hours"]
+                    )
+                    - workload_target_slots
+                ),
+            )
+            for teacher_id in workload_teacher_ids
+        )
+
+        # Data-driven lexicographic weights. One improvement at a higher
+        # priority outweighs every possible lower-priority change.
+        spread_weight = total_deviation_cap + 1
+        zero_teacher_weight = (
+            max_weekly_slots * spread_weight
+            + total_deviation_cap
+            + 1
+        )
+
+        zero_teacher_penalty = sum(
+            1 - teacher_used_vars[teacher_id]
+            for teacher_id in workload_teacher_ids
+        )
+
+        total_deviation = sum(
+            teacher_deviation_vars.values()
+        )
+
+        model.Minimize(
+            zero_teacher_penalty * zero_teacher_weight
+            + workload_spread_var * spread_weight
+            + total_deviation
+        )
 
     # ========================================
     # 14. CLUSTER / MAJOR CONFLICTS
@@ -1745,105 +2082,79 @@ def solve_schedule(payload):
                 continue
 
             # ====================================
-            # 15.3 FIRST YEAR
+            # 15.3 PROGRAM DAILY DISTRIBUTION
             # ====================================
 
-            # 9 F2F subjects:
-            # 3 subjects on each F2F day.
+            if program_code == "BSIT":
 
-            if year_level == 1:
+                # Preserve the proven BSIT distribution policy.
+                if year_level == 1:
+                    model.Add(count == 3)
 
-                model.Add(
-                    count == 3
-                )
+                elif year_level == 2:
+                    model.Add(count >= 2)
+                    model.Add(count <= 3)
 
-            # ====================================
-            # 15.4 SECOND YEAR
-            # ====================================
+                elif year_level == 3:
+                    active_day = model.NewBoolVar(
+                        f"third_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-            # 8 F2F subjects:
-            #
-            # 3-3-2
-            # 3-2-3
-            # 2-3-3
+                elif year_level == 4 and section_type == "CLUSTER":
+                    active_day = model.NewBoolVar(
+                        f"fourth_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-            elif year_level == 2:
+            else:
 
-                model.Add(
-                    count >= 2
-                )
+                # Generic REGULAR-program policy (currently BSOA).
+                if section_type != "REGULAR":
+                    return failure(
+                        "PROGRAM_POLICY_NOT_CONFIGURED",
+                        f"{program_code} section type {section_type} is not configured.",
+                    )
 
-                model.Add(
-                    count <= 3
-                )
+                if year_level == 3:
+                    # BSOA 3rd year Semester 1 has five F2F subjects.
+                    # Use exactly TWO F2F days: one day with 3 subjects and
+                    # one day with 2 subjects (3-2), leaving the third F2F day empty.
+                    # The existing break rule adds the 30-minute break only on
+                    # the day that contains exactly 3 F2F subjects.
+                    is_three = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_three"
+                    )
+                    is_two = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_two"
+                    )
+                    is_zero = model.NewBoolVar(
+                        f"generic_third_year_section_{section_id}_day_{day_index}_zero"
+                    )
+                    model.AddExactlyOne(is_three, is_two, is_zero)
+                    model.Add(count == 3).OnlyEnforceIf(is_three)
+                    model.Add(count == 2).OnlyEnforceIf(is_two)
+                    model.Add(count == 0).OnlyEnforceIf(is_zero)
 
-            # ====================================
-            # 15.5 THIRD YEAR
-            # ====================================
-
-            # 6 F2F subjects:
-            #
-            # Two days containing 3 subjects.
-            # One vacant F2F day.
-
-            elif year_level == 3:
-
-                active_day = model.NewBoolVar(
-
-                    f"third_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-            # ====================================
-            # 15.6 FOURTH-YEAR CLUSTER
-            # ====================================
-
-            elif (
-                year_level == 4
-                and section_type == "CLUSTER"
-            ):
-
-                active_day = model.NewBoolVar(
-
-                    f"fourth_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == len(lessons)
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
+                elif year_level == 4:
+                    # BSOA 4th year Semester 1 has three F2F subjects.
+                    # Keep the whole three-subject block on ONE allowed F2F day
+                    # (6 class hours total) instead of forcing a 1-1-1 split.
+                    active_day = model.NewBoolVar(
+                        f"generic_fourth_year_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                else:
+                    # BSOA Years 1-2 keep a balanced three-day distribution:
+                    # Year 1 (8 subjects) -> 3-3-2
+                    # Year 2 (7 subjects) -> 3-2-2
+                    low, remainder = divmod(len(lessons), len(f2f_days))
+                    high = low + (1 if remainder else 0)
+                    model.Add(count >= low)
+                    model.Add(count <= high)
 
             # ====================================
             # 16. DAILY BREAK / GAP CONSTRAINTS
@@ -1974,163 +2285,65 @@ def solve_schedule(payload):
             )
 
             # ====================================
-            # 16.1 FIRST YEAR BREAK
+            # 16.1 PROGRAM BREAK / GAP POLICY
             # ====================================
 
-            # Exactly one 30-minute gap.
-            #
-            # The gap must occur between
-            # consecutive subjects.
+            if program_code == "BSIT":
 
-            if year_level == 1:
+                # Preserve the proven BSIT break policy.
+                if year_level == 1:
+                    model.Add(latest - earliest == total_duration + 1)
 
-                model.Add(
+                elif year_level == 2:
+                    three_subjects = model.NewBoolVar(
+                        f"second_year_section_{section_id}_day_{day_index}_three_subjects"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(three_subjects)
+                    model.Add(count == 2).OnlyEnforceIf(three_subjects.Not())
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(three_subjects)
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(three_subjects.Not())
 
-                    latest - earliest
-                    == total_duration + 1
+                elif year_level == 3:
+                    active_day = model.NewBoolVar(
+                        f"third_year_break_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(active_day)
 
-                )
+                elif year_level == 4 and section_type == "CLUSTER":
+                    active_day = model.NewBoolVar(
+                        f"fourth_year_break_section_{section_id}_day_{day_index}_active"
+                    )
+                    model.Add(count == len(lessons)).OnlyEnforceIf(active_day)
+                    model.Add(count == 0).OnlyEnforceIf(active_day.Not())
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(active_day)
 
-            # ====================================
-            # 16.2 SECOND YEAR BREAK
-            # ====================================
+            else:
 
-            elif year_level == 2:
-
-                three_subjects = model.NewBoolVar(
-
-                    f"second_year_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}"
-                    f"_three_subjects",
-
-                )
-
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    three_subjects
-                )
-
-                model.Add(
-
-                    count == 2
-
-                ).OnlyEnforceIf(
-                    three_subjects.Not()
-                )
-
-                # Three subjects:
-                # one 30-minute break.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration + 1
-
-                ).OnlyEnforceIf(
-                    three_subjects
-                )
-
-                # Two subjects:
-                # no scheduled break.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration
-
-                ).OnlyEnforceIf(
-                    three_subjects.Not()
-                )
-
-            # ====================================
-            # 16.3 THIRD YEAR BREAK
-            # ====================================
-
-            elif year_level == 3:
-
+                # Generic REGULAR-program policy (currently BSOA):
+                # exactly three F2F subjects on Years 1-3 get one 30-minute
+                # break; other active F2F days are consecutive. Fourth year
+                # never receives a scheduled break.
                 active_day = model.NewBoolVar(
-
-                    f"third_year_break_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
+                    f"generic_section_{section_id}_day_{day_index}_active"
                 )
+                model.Add(count >= 1).OnlyEnforceIf(active_day)
+                model.Add(count == 0).OnlyEnforceIf(active_day.Not())
 
-                model.Add(
-
-                    count == 3
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-                # One 30-minute break on
-                # a three-subject F2F day.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration + 1
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-            # ====================================
-            # 16.4 FOURTH YEAR: NO BREAK
-            # ====================================
-
-            elif (
-                year_level == 4
-                and section_type == "CLUSTER"
-            ):
-
-                active_day = model.NewBoolVar(
-
-                    f"fourth_year_break_"
-                    f"section_{section_id}"
-                    f"_day_{day_index}_active",
-
-                )
-
-                model.Add(
-
-                    count == len(lessons)
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
-
-                model.Add(
-
-                    count == 0
-
-                ).OnlyEnforceIf(
-                    active_day.Not()
-                )
-
-                # Classes must be consecutive.
-
-                model.Add(
-
-                    latest - earliest
-                    == total_duration
-
-                ).OnlyEnforceIf(
-                    active_day
-                )
+                if year_level in (1, 2, 3):
+                    three_subjects = model.NewBoolVar(
+                        f"generic_section_{section_id}_day_{day_index}_three_subjects"
+                    )
+                    model.Add(count == 3).OnlyEnforceIf(three_subjects)
+                    model.Add(count != 3).OnlyEnforceIf(three_subjects.Not())
+                    model.AddImplication(three_subjects, active_day)
+                    model.Add(latest - earliest == total_duration + 1).OnlyEnforceIf(three_subjects)
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(
+                        [active_day, three_subjects.Not()]
+                    )
+                else:
+                    model.Add(latest - earliest == total_duration).OnlyEnforceIf(active_day)
 
     # Phase 3C: balance Years 1-3 ONLINE meetings across their three online days.
     # Phase 4E: retain the day flags for a SOFT compact-online objective.
@@ -2170,7 +2383,7 @@ def solve_schedule(payload):
             model.Add(sum(flags) >= low)
             model.Add(sum(flags) <= high)
 
-            # For normal BSIT Years 1-3, low >= 1, so every online day is active.
+            # When low >= 1, every online day is active.
             # A future curriculum with fewer than three online lessons skips
             # this optional optimization rather than creating an invalid span.
             if low == 0:
@@ -2223,15 +2436,11 @@ def solve_schedule(payload):
 
     ]
 
-    # One combined objective: minimizing empty ONLINE time is the primary
-    # SOFT preference. When two timetables have the same total ONLINE gaps,
-    # retain the prior preference for earlier first-year F2F classes.
-    # One extra ONLINE vacant slot outweighs every possible change to the
-    # bounded first-year F2F-position objective. HARD rules still take priority.
-    # Feasibility-first production solve.
-# Hard constraints remain unchanged.
-# Soft optimization is temporarily disabled
-# so CP-SAT can find a complete valid timetable faster.
+    # Faculty workload balancing is the active SOFT optimization objective.
+    # The older compact-online / early-first-year preferences above remain
+    # calculated for compatibility but are intentionally not added to the
+    # objective here, so they cannot compete with fair teacher distribution.
+    # All scheduling safety rules remain HARD constraints.
 
     # ========================================
     # 18. RUN OR-TOOLS OPTIMIZER
@@ -2282,11 +2491,32 @@ def solve_schedule(payload):
                 "INFEASIBLE"
             )
 
-            message = (
-                "The optimizer proved that "
-                "the current scheduling "
-                "constraints are infeasible."
+            resource_diagnosis = (
+                build_infeasible_resource_diagnosis(
+                    meetings,
+                    sections,
+                    teachers,
+                )
             )
+
+            if (
+                resource_diagnosis.get("kind")
+                == "TEACHER_CAPACITY_SHORTAGE"
+            ):
+
+                message = (
+                    "Schedule cannot be generated: "
+                    "teacher capacity is insufficient "
+                    "for the required weekly teaching load."
+                )
+
+            else:
+
+                message = (
+                    "The optimizer proved that "
+                    "the current scheduling "
+                    "constraints are infeasible."
+                )
 
         elif status == cp_model.MODEL_INVALID:
 
@@ -2331,6 +2561,12 @@ def solve_schedule(payload):
             returned_meetings=0,
 
             school_wide_validation_complete=False,
+
+            resource_diagnosis=(
+                resource_diagnosis
+                if status == cp_model.INFEASIBLE
+                else None
+            ),
 
         )
         
@@ -2526,6 +2762,36 @@ def solve_schedule(payload):
 
         "fixed_existing_meetings": len(saved_snapshot),
         "existing_snapshot_constraints_applied": True,
+
+        "teacher_workload_balance": {
+            "eligible_teacher_count": len(workload_teacher_ids),
+            "target_hours": round(
+                workload_target_slots * SLOT_MINUTES / 60,
+                2,
+            ),
+            "zero_load_teacher_ids": [
+                teacher_id
+                for teacher_id in workload_teacher_ids
+                if solver.Value(teacher_load_vars[teacher_id]) == 0
+            ],
+            "weekly_hours": {
+                str(teacher_id): round(
+                    solver.Value(teacher_load_vars[teacher_id])
+                    * SLOT_MINUTES / 60,
+                    2,
+                )
+                for teacher_id in workload_teacher_ids
+            },
+            "spread_hours": (
+                round(
+                    solver.Value(workload_spread_var)
+                    * SLOT_MINUTES / 60,
+                    2,
+                )
+                if workload_spread_var is not None
+                else 0.0
+            ),
+        },
 
         "assignments":
             result,

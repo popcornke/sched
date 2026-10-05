@@ -81,25 +81,58 @@ def solve_exam(data):
         existing_exams = data.get('existing_exams', [])
         suspend_regular_classes = bool(data.get('regular_classes_suspended_on_exam_dates', False))
 
+        # Index already-saved exams once before candidate generation.
+        #
+        # Previous implementation scanned the ENTIRE existing_exams list for
+        # every candidate exam/day/hour/proctor/room combination. That becomes
+        # extremely expensive as soon as another program already has an ACTIVE
+        # exam timetable. Keep the exact same cross-program conflict rules, but
+        # reduce each lookup to only the relevant resource/date (or subject/date)
+        # intervals.
+        saved_resource_intervals = {
+            'proctor_id': defaultdict(list),
+            'room_id': defaultdict(list),
+        }
+        saved_subject_intervals = defaultdict(list)
+        current_program_id = int(data['program_id'])
+
+        for row in existing_exams:
+            exam_date = str(row.get('exam_date') or '')
+            saved_start = minutes(row['start_time'])
+            saved_end = minutes(row['end_time'])
+
+            for key in ('proctor_id', 'room_id'):
+                value = row.get(key)
+                if value is not None:
+                    saved_resource_intervals[key][(int(value), exam_date)].append(
+                        (saved_start, saved_end)
+                    )
+
+            # Paper-rotation protection applies only to the same program,
+            # same year level, and same subject, exactly as before.
+            if int(row.get('program_id', -1)) == current_program_id:
+                saved_subject_intervals[(
+                    int(row.get('year_level', -1)),
+                    int(row.get('subject_id', -1)),
+                    exam_date,
+                )].append((saved_start, saved_end))
+
         def saved_exam_blocked(key, resource_id, actual_date, start, end):
+            intervals = saved_resource_intervals[key].get(
+                (resource_id, actual_date.isoformat()), ()
+            )
             return any(
-                row.get(key) is not None
-                and int(row[key]) == resource_id
-                and str(row.get('exam_date')) == actual_date.isoformat()
-                and start < minutes(row['end_time'])
-                and minutes(row['start_time']) < end
-                for row in existing_exams
+                start < saved_end and saved_start < end
+                for saved_start, saved_end in intervals
             )
 
         def saved_same_subject_blocked(year_level, subject_id, actual_date, start, end):
+            intervals = saved_subject_intervals.get(
+                (year_level, subject_id, actual_date.isoformat()), ()
+            )
             return any(
-                int(row.get('program_id', -1)) == int(data['program_id'])
-                and int(row.get('year_level', -1)) == year_level
-                and int(row.get('subject_id', -1)) == subject_id
-                and str(row.get('exam_date')) == actual_date.isoformat()
-                and start < minutes(row['end_time'])
-                and minutes(row['start_time']) < end
-                for row in existing_exams
+                start < saved_end and saved_start < end
+                for saved_start, saved_end in intervals
             )
         db_slots = defaultdict(set)
         for row in data['time_slots']:

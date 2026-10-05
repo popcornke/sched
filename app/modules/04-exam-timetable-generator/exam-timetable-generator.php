@@ -125,6 +125,7 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
                   <div class="bcp-exam__stat-card"><span>Scheduled exams</span><strong id="examAssigned">—</strong></div>
                   <div class="bcp-exam__stat-card"><span>Exam audit issues</span><strong id="examIssues">—</strong></div>
                   <div class="bcp-exam__stat-card"><span>Solver status</span><strong id="examSolver">—</strong></div>
+                  <div class="bcp-exam__stat-card" title="Actual Google OR-Tools CP-SAT solver wall time for this generated preview."><span>OR-Tools solve time</span><strong id="examSolveTime">—</strong></div>
                 </div>
                 
                 <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time, including actual Cluster + Major combinations. Cluster and Major are printed as separate official section timetables. DEMO timetable; check approved exam requirements before official use.</p>
@@ -425,6 +426,8 @@ $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));$dashboa
   $('examIssues').textContent=(data.issues || []).length;
   
   $('examSolver').textContent=data.solver_status||'SAVED';
+  const solveSeconds=Number(data.solve_seconds);
+  $('examSolveTime').textContent=Number.isFinite(solveSeconds)?`${solveSeconds.toFixed(2)} s`:'—';
   const groups=new Map();for(const row of data.assignments){if(!groups.has(row.section_id))groups.set(row.section_id,{section_code:row.section_code,section_type:row.section_type,year_level:row.year_level,rows:[]});groups.get(row.section_id).rows.push(row);}
   const target=$('examSections');target.replaceChildren();
   const ordered=[...groups.values()].sort((a,b)=>a.year_level-b.year_level||a.section_code.localeCompare(b.section_code));

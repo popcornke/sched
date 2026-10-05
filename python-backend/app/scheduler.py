@@ -1027,11 +1027,6 @@ def solve_schedule(payload):
 
     teacher_daily_load = defaultdict(list)
 
-    # Teachers that are genuinely usable by at least one generated meeting.
-    # Workload balancing is limited to this set so a teacher with no
-    # authorized/available subject is not treated as an optimization failure.
-    teacher_candidate_ids = set()
-
     section_f2f = defaultdict(list)
 
     for index, meeting in enumerate(meetings):
@@ -1245,8 +1240,6 @@ def solve_schedule(payload):
                     )
 
                 )
-
-                teacher_candidate_ids.add(teacher_id)
 
         if not eligible_teachers:
 
@@ -1675,170 +1668,6 @@ def solve_schedule(payload):
                 ) <= daily_limit
 
             )
-
-    # ========================================
-    # 13.1 BALANCED FACULTY WORKLOAD (SOFT)
-    # ========================================
-
-    # Hard teacher rules above remain authoritative:
-    #   - subject authorization
-    #   - teacher availability
-    #   - no teacher overlap
-    #   - daily/weekly limits
-    #
-    # This objective only chooses among already valid assignments.
-    # Priority order:
-    #   1) minimize usable teachers left at zero load,
-    #   2) minimize the workload spread,
-    #   3) minimize total distance from the average load.
-    #
-    # A teacher is included only if they were an eligible candidate for at
-    # least one generated meeting. This avoids forcing workload onto faculty
-    # who have no authorized/available class in the selected timetable.
-
-    workload_teacher_ids = sorted(teacher_candidate_ids)
-    teacher_load_vars = {}
-    teacher_used_vars = {}
-    teacher_deviation_vars = {}
-
-    total_required_teacher_slots = sum(
-        meeting["duration"]
-        for meeting in meetings
-    )
-
-    workload_target_slots = (
-        int(round(
-            total_required_teacher_slots
-            / len(workload_teacher_ids)
-        ))
-        if workload_teacher_ids
-        else 0
-    )
-
-    for teacher_id in workload_teacher_ids:
-
-        weekly_limit = hours_to_slots(
-            teachers[teacher_id]["max_weekly_hours"]
-        )
-
-        load_var = model.NewIntVar(
-            0,
-            weekly_limit,
-            f"teacher_{teacher_id}_weekly_load_slots",
-        )
-
-        model.Add(
-            load_var
-            == sum(teacher_weekly_load[teacher_id])
-        )
-
-        used_var = model.NewBoolVar(
-            f"teacher_{teacher_id}_has_workload"
-        )
-
-        model.Add(load_var >= 1).OnlyEnforceIf(used_var)
-        model.Add(load_var == 0).OnlyEnforceIf(used_var.Not())
-
-        max_deviation = max(
-            workload_target_slots,
-            abs(weekly_limit - workload_target_slots),
-        )
-
-        deviation_var = model.NewIntVar(
-            0,
-            max_deviation,
-            f"teacher_{teacher_id}_workload_deviation",
-        )
-
-        model.AddAbsEquality(
-            deviation_var,
-            load_var - workload_target_slots,
-        )
-
-        teacher_load_vars[teacher_id] = load_var
-        teacher_used_vars[teacher_id] = used_var
-        teacher_deviation_vars[teacher_id] = deviation_var
-
-    workload_spread_var = None
-
-    if workload_teacher_ids:
-
-        max_weekly_slots = max(
-            hours_to_slots(
-                teachers[teacher_id]["max_weekly_hours"]
-            )
-            for teacher_id in workload_teacher_ids
-        )
-
-        min_load_var = model.NewIntVar(
-            0,
-            max_weekly_slots,
-            "minimum_teacher_weekly_load_slots",
-        )
-
-        max_load_var = model.NewIntVar(
-            0,
-            max_weekly_slots,
-            "maximum_teacher_weekly_load_slots",
-        )
-
-        model.AddMinEquality(
-            min_load_var,
-            list(teacher_load_vars.values()),
-        )
-
-        model.AddMaxEquality(
-            max_load_var,
-            list(teacher_load_vars.values()),
-        )
-
-        workload_spread_var = model.NewIntVar(
-            0,
-            max_weekly_slots,
-            "teacher_weekly_load_spread_slots",
-        )
-
-        model.Add(
-            workload_spread_var
-            == max_load_var - min_load_var
-        )
-
-        total_deviation_cap = sum(
-            max(
-                workload_target_slots,
-                abs(
-                    hours_to_slots(
-                        teachers[teacher_id]["max_weekly_hours"]
-                    )
-                    - workload_target_slots
-                ),
-            )
-            for teacher_id in workload_teacher_ids
-        )
-
-        # Data-driven lexicographic weights. One improvement at a higher
-        # priority outweighs every possible lower-priority change.
-        spread_weight = total_deviation_cap + 1
-        zero_teacher_weight = (
-            max_weekly_slots * spread_weight
-            + total_deviation_cap
-            + 1
-        )
-
-        zero_teacher_penalty = sum(
-            1 - teacher_used_vars[teacher_id]
-            for teacher_id in workload_teacher_ids
-        )
-
-        total_deviation = sum(
-            teacher_deviation_vars.values()
-        )
-
-        model.Minimize(
-            zero_teacher_penalty * zero_teacher_weight
-            + workload_spread_var * spread_weight
-            + total_deviation
-        )
 
     # ========================================
     # 14. CLUSTER / MAJOR CONFLICTS
@@ -2436,11 +2265,15 @@ def solve_schedule(payload):
 
     ]
 
-    # Faculty workload balancing is the active SOFT optimization objective.
-    # The older compact-online / early-first-year preferences above remain
-    # calculated for compatibility but are intentionally not added to the
-    # objective here, so they cannot compete with fair teacher distribution.
-    # All scheduling safety rules remain HARD constraints.
+    # One combined objective: minimizing empty ONLINE time is the primary
+    # SOFT preference. When two timetables have the same total ONLINE gaps,
+    # retain the prior preference for earlier first-year F2F classes.
+    # One extra ONLINE vacant slot outweighs every possible change to the
+    # bounded first-year F2F-position objective. HARD rules still take priority.
+    # Feasibility-first production solve.
+# Hard constraints remain unchanged.
+# Soft optimization is temporarily disabled
+# so CP-SAT can find a complete valid timetable faster.
 
     # ========================================
     # 18. RUN OR-TOOLS OPTIMIZER
@@ -2762,36 +2595,6 @@ def solve_schedule(payload):
 
         "fixed_existing_meetings": len(saved_snapshot),
         "existing_snapshot_constraints_applied": True,
-
-        "teacher_workload_balance": {
-            "eligible_teacher_count": len(workload_teacher_ids),
-            "target_hours": round(
-                workload_target_slots * SLOT_MINUTES / 60,
-                2,
-            ),
-            "zero_load_teacher_ids": [
-                teacher_id
-                for teacher_id in workload_teacher_ids
-                if solver.Value(teacher_load_vars[teacher_id]) == 0
-            ],
-            "weekly_hours": {
-                str(teacher_id): round(
-                    solver.Value(teacher_load_vars[teacher_id])
-                    * SLOT_MINUTES / 60,
-                    2,
-                )
-                for teacher_id in workload_teacher_ids
-            },
-            "spread_hours": (
-                round(
-                    solver.Value(workload_spread_var)
-                    * SLOT_MINUTES / 60,
-                    2,
-                )
-                if workload_spread_var is not None
-                else 0.0
-            ),
-        },
 
         "assignments":
             result,

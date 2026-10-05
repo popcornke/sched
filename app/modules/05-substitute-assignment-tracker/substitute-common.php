@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
-
+/** Module 5 shared helpers. Works on localhost and hosted deployments through the normal app DB/auth configuration. */
 require_once dirname(__DIR__, 2) . '/shared/auth.php';
-authRequire(true);
-/** Module 5: local DEMO only. The faculty group owns faculty profiles/leave approvals. */
 require_once __DIR__ . '/../../config/database.php';
 
 date_default_timezone_set('Asia/Manila');
@@ -25,6 +23,8 @@ final class SubstituteError extends RuntimeException {
     }
 }
 function subGuard(string $method): void {
+    // Environment-neutral: authenticate by role, never by client IP.
+    authRequire(true, ['ADMIN', 'SCHEDULER']);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== $method) {
         subFail(405, 'METHOD_NOT_ALLOWED', 'Use the required HTTP method.');
     }
@@ -80,14 +80,14 @@ function subMeeting(PDO $pdo, int $id, int $period, bool $lock = false): array {
         sec.section_id,sec.section_code,sec.program_id,sec.student_count,
         p.program_code,t.teacher_name AS original_teacher_name,b.academic_period_id
         FROM schedule_meetings m
-        JOIN schedule_batches b ON b.batch_id=m.batch_id AND b.status='ACTIVE' AND b.data_origin='DEMO'
+        JOIN schedule_batches b ON b.batch_id=m.batch_id AND b.status='ACTIVE'
         JOIN section_subjects ss ON ss.section_subject_id=m.section_subject_id
         JOIN subjects s ON s.subject_id=ss.subject_id
         JOIN sections sec ON sec.section_id=ss.section_id
         JOIN programs p ON p.program_id=sec.program_id
         JOIN teachers t ON t.teacher_id=m.teacher_id
         WHERE m.meeting_id=:meeting AND b.academic_period_id=:period
-        AND sec.academic_period_id=:section_period AND sec.is_active=1 AND sec.data_origin='DEMO'
+        AND sec.academic_period_id=:section_period AND sec.is_active=1
         AND sec.program_id=b.program_id AND s.program_id=sec.program_id
         LIMIT 1";
     // Caller locks ACTIVE batch rows first; do not rely on a lock on a joined derived query.
@@ -114,13 +114,13 @@ function subTeacherIssues(PDO $pdo, array $meeting, string $date, int $candidate
     $period = (int)$meeting['academic_period_id'];
     $teacher = subOne($pdo,"SELECT teacher_id,teacher_name,program_id,status,data_origin,max_daily_hours,max_weekly_hours
         FROM teachers WHERE teacher_id=:id", ['id'=>$candidate]);
-    if (!$teacher || $teacher['status'] !== 'ACTIVE' || $teacher['data_origin'] !== 'DEMO'
+    if (!$teacher || $teacher['status'] !== 'ACTIVE'
         || (int)$teacher['program_id'] !== (int)$meeting['program_id']) {
         return ['Professor is inactive, unavailable, or belongs to a different program.'];
     }
     if ($candidate === (int)$meeting['original_teacher_id']) $issues[] = 'Choose someone other than the original professor.';
     if (!subOne($pdo, "SELECT authorization_id FROM teacher_subject_authorizations
-        WHERE teacher_id=:t AND subject_id=:s AND data_origin='DEMO' LIMIT 1",
+        WHERE teacher_id=:t AND subject_id=:s LIMIT 1",
         ['t'=>$candidate, 's'=>$meeting['subject_id']])) $issues[] = 'Professor is not authorized to teach this subject.';
     $day = subWeekday($date);
     $start = (string)$meeting['start_time']; $end = (string)$meeting['end_time'];
@@ -201,10 +201,6 @@ function subTeacherIssues(PDO $pdo, array $meeting, string $date, int $candidate
 }
 function subSession(): void {
     if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_name('BCP_SUBSTITUTE_DEMO');
-        session_set_cookie_params(['httponly'=>true,'samesite'=>'Strict',
-            'path'=>'/BCP_SCHEDULING/app/modules/05-substitute-assignment-tracker']);
-        session_start();
+        authStart();
     }
-    if (empty($_SESSION['sub_csrf'])) $_SESSION['sub_csrf'] = bin2hex(random_bytes(32));
 }

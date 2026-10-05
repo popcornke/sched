@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 require_once __DIR__ . '/substitute-common.php';
@@ -8,1121 +7,673 @@ $pdo = null;
 $locked = false;
 $lockName = '';
 
-try {
-
-    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-
-    subGuard(
-        $method === 'POST'
-            ? 'POST'
-            : 'GET'
+function subRefreshRequestStatus(PDO $pdo, int $requestId): void
+{
+    $request = subOne(
+        $pdo,
+        "SELECT status FROM substitute_requests WHERE request_id=:request FOR UPDATE",
+        ['request' => $requestId]
     );
 
-    subSession();
+    if (!$request || $request['status'] === 'CANCELLED') {
+        return;
+    }
 
+    $counts = subOne(
+        $pdo,
+        "SELECT
+            COUNT(*) AS total,
+            SUM(item_status='ASSIGNED') AS assigned,
+            SUM(item_status='PENDING') AS pending
+         FROM substitute_request_items
+         WHERE request_id=:request",
+        ['request' => $requestId]
+    );
+
+    $total = (int)($counts['total'] ?? 0);
+    $assigned = (int)($counts['assigned'] ?? 0);
+
+    $status = 'PENDING';
+    if ($total > 0 && $assigned >= $total) {
+        $status = 'ASSIGNED';
+    } elseif ($assigned > 0) {
+        $status = 'PARTIALLY_ASSIGNED';
+    }
+
+    $stmt = $pdo->prepare(
+        "UPDATE substitute_requests SET status=:status WHERE request_id=:request"
+    );
+    $stmt->execute(['status' => $status, 'request' => $requestId]);
+}
+
+function subRequestItem(PDO $pdo, int $requestItemId, int $period, bool $forUpdate = false): array
+{
+    $sql = "SELECT
+                sri.request_item_id,
+                sri.request_id,
+                sri.meeting_id,
+                sri.class_batch_id,
+                sri.duty_date,
+                sri.item_status,
+                sr.academic_period_id,
+                sr.program_id,
+                sr.original_teacher_id,
+                sr.status AS request_status,
+                sr.coverage_type,
+                sr.leave_start_date,
+                sr.leave_end_date
+            FROM substitute_request_items sri
+            JOIN substitute_requests sr ON sr.request_id=sri.request_id
+            WHERE sri.request_item_id=:item
+              AND sr.academic_period_id=:period";
+
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $item = subOne($pdo, $sql, [
+        'item' => $requestItemId,
+        'period' => $period
+    ]);
+
+    if (!$item) {
+        subFail(404, 'REQUEST_ITEM_NOT_FOUND', 'The requested class coverage item was not found.');
+    }
+
+    return $item;
+}
+
+function subCandidateLoad(PDO $pdo, array $meeting, string $date, int $teacherId): array
+{
+    $period = (int)$meeting['academic_period_id'];
+    $day = subWeekday($date);
+    $planned = max(0, subClock((string)$meeting['end_time']) - subClock((string)$meeting['start_time']));
+
+    $regular = subRows(
+        $pdo,
+        "SELECT
+            m.day_of_week,
+            SUM(TIME_TO_SEC(TIMEDIFF(m.end_time,m.start_time))/60) AS minutes
+         FROM schedule_meetings m
+         JOIN schedule_batches sb ON sb.batch_id=m.batch_id
+         WHERE sb.academic_period_id=:period
+           AND sb.status='ACTIVE'
+           AND m.teacher_id=:teacher
+         GROUP BY m.day_of_week",
+        ['period' => $period, 'teacher' => $teacherId]
+    );
+
+    $daily = 0.0;
+    $weekly = 0.0;
+    foreach ($regular as $row) {
+        $minutes = (float)($row['minutes'] ?? 0);
+        $weekly += $minutes;
+        if ((string)$row['day_of_week'] === $day) {
+            $daily += $minutes;
+        }
+    }
+
+    $weekStart = (new DateTimeImmutable($date))->modify('monday this week')->format('Y-m-d');
+    $weekEnd = (new DateTimeImmutable($date))->modify('sunday this week')->format('Y-m-d');
+
+    $duties = subRows(
+        $pdo,
+        "SELECT
+            sa.duty_date,
+            TIME_TO_SEC(TIMEDIFF(m.end_time,m.start_time))/60 AS minutes
+         FROM substitute_assignments sa
+         JOIN schedule_meetings m ON m.meeting_id=sa.meeting_id
+         JOIN schedule_batches sb ON sb.batch_id=m.batch_id AND sb.status='ACTIVE'
+         WHERE sa.academic_period_id=:period
+           AND sa.status='ACTIVE'
+           AND sa.substitute_teacher_id=:teacher
+           AND sa.duty_date BETWEEN :week_start AND :week_end",
+        [
+            'period' => $period,
+            'teacher' => $teacherId,
+            'week_start' => $weekStart,
+            'week_end' => $weekEnd
+        ]
+    );
+
+    foreach ($duties as $duty) {
+        $minutes = (float)($duty['minutes'] ?? 0);
+        $weekly += $minutes;
+        if ((string)$duty['duty_date'] === $date) {
+            $daily += $minutes;
+        }
+    }
+
+    return [
+        'current_daily_minutes' => (int)round($daily),
+        'current_weekly_minutes' => (int)round($weekly),
+        'projected_daily_minutes' => (int)round($daily + $planned),
+        'projected_weekly_minutes' => (int)round($weekly + $planned),
+    ];
+}
+
+try {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    subGuard($method === 'POST' ? 'POST' : 'GET');
+    subSession();
     $pdo = subPdo();
 
-    /*
-     * ============================================================
-     * GET REQUESTS
-     * ============================================================
-     */
     if ($method === 'GET') {
-
         $action = (string)($_GET['action'] ?? 'catalog');
 
-        /*
-         * ========================================================
-         * CATALOG
-         *
-         * Only academic periods that already have at least one
-         * ACTIVE DEMO class timetable are valid for substitution.
-         *
-         * This prevents the module from defaulting to a newer
-         * academic period that has setup data but no saved timetable.
-         * ========================================================
-         */
         if ($action === 'catalog') {
-
-            /*
-             * Only expose periods that actually have an ACTIVE
-             * saved DEMO class timetable.
-             */
             $periods = subRows(
                 $pdo,
-                "
-                SELECT DISTINCT
-                    ap.academic_period_id,
-                    ap.academic_year,
-                    ap.semester
-                FROM academic_periods ap
-                INNER JOIN schedule_batches sb
-                    ON sb.academic_period_id = ap.academic_period_id
-                WHERE ap.period_status = 'DEMO'
-                  AND sb.status = 'ACTIVE'
-                  AND sb.data_origin = 'DEMO'
-                ORDER BY ap.academic_period_id DESC
-                "
+                "SELECT academic_period_id,academic_year,semester,period_status
+                 FROM academic_periods
+                 ORDER BY academic_period_id DESC"
             );
 
-            if (!$periods) {
-                subFail(
-                    404,
-                    'NO_ACTIVE_DEMO_TIMETABLE',
-                    'No ACTIVE DEMO class timetable is available for substitute assignment.'
-                );
+            $period = isset($_GET['period_id']) && $_GET['period_id'] !== ''
+                ? subInt($_GET['period_id'], 'period')
+                : (int)($periods[0]['academic_period_id'] ?? 0);
+
+            if (!$period) {
+                subFail(404, 'NO_ACADEMIC_PERIOD', 'No academic period exists.');
             }
 
-            /*
-             * Default to newest timetable-ready academic period.
-             */
-            $period = (int)$periods[0]['academic_period_id'];
+            // Inbox programs come from either incoming requests OR an ACTIVE timetable.
+            // This keeps the page usable even when a program has no current request yet.
+            $programs = subRows(
+                $pdo,
+                "SELECT DISTINCT p.program_id,p.program_code,p.program_name
+                 FROM programs p
+                 WHERE EXISTS (
+                    SELECT 1
+                    FROM substitute_requests sr
+                    WHERE sr.program_id=p.program_id
+                      AND sr.academic_period_id=:request_period
+                 )
+                 OR EXISTS (
+                    SELECT 1
+                    FROM schedule_batches sb
+                    WHERE sb.program_id=p.program_id
+                      AND sb.academic_period_id=:batch_period
+                      AND sb.status='ACTIVE'
+                 )
+                 ORDER BY p.program_code",
+                [
+                    'request_period' => $period,
+                    'batch_period' => $period
+                ]
+            );
 
-            /*
-             * If the browser requests a period, use it only when
-             * that period is included in the timetable-ready list.
-             *
-             * If it is stale/invalid, safely fall back instead of
-             * failing the entire catalog request.
-             */
-            if (
-                isset($_GET['period_id'])
-                && $_GET['period_id'] !== ''
-            ) {
+            $programCode = (string)($_GET['program'] ?? ($programs[0]['program_code'] ?? ''));
+            $selected = null;
 
-                $requestedPeriod = subInt(
-                    $_GET['period_id'],
-                    'period'
-                );
-
-                foreach ($periods as $availablePeriod) {
-
-                    if (
-                        (int)$availablePeriod['academic_period_id']
-                        === $requestedPeriod
-                    ) {
-                        $period = $requestedPeriod;
-                        break;
-                    }
+            foreach ($programs as $program) {
+                if ((string)$program['program_code'] === $programCode) {
+                    $selected = $program;
+                    break;
                 }
             }
 
-            /*
- * Show ALL active College programs in the dropdown.
- *
- * A program does NOT need an ACTIVE timetable just to be visible.
- * has_active_timetable only tells the UI whether substitute
- * assignments can currently be performed for that program.
- */
-$programs = subRows(
-    $pdo,
-    "
-    SELECT
-        p.program_id,
-        p.program_code,
-        p.program_name,
+            $requests = [];
+            $items = [];
+            $history = [];
 
-        CASE
-            WHEN EXISTS (
-                SELECT 1
-                FROM schedule_batches sb
-                WHERE sb.program_id = p.program_id
-                  AND sb.academic_period_id = :period
-                  AND sb.status = 'ACTIVE'
-                  AND sb.data_origin = 'DEMO'
-            )
-            THEN 1
-            ELSE 0
-        END AS has_active_timetable
+            if ($selected) {
+                $programId = (int)$selected['program_id'];
 
-    FROM programs p
+                // Request source is intentionally outside this module's scope.
+                // Therefore created_by_user_id may be NULL and is NOT used as a requirement.
+                $requests = subRows(
+                    $pdo,
+                    "SELECT
+                        sr.request_id,
+                        sr.coverage_type,
+                        sr.leave_start_date,
+                        sr.leave_end_date,
+                        sr.status,
+                        sr.created_at,
+                        t.teacher_id,
+                        t.teacher_name,
+                        t.employee_no,
+                        COUNT(sri.request_item_id) AS total_items,
+                        SUM(sri.item_status='PENDING') AS pending_items,
+                        SUM(sri.item_status='ASSIGNED') AS assigned_items,
+                        SUM(sri.item_status='CANCELLED') AS cancelled_items
+                     FROM substitute_requests sr
+                     JOIN teachers t ON t.teacher_id=sr.original_teacher_id
+                     LEFT JOIN substitute_request_items sri ON sri.request_id=sr.request_id
+                     WHERE sr.academic_period_id=:period
+                       AND sr.program_id=:program
+                     GROUP BY
+                        sr.request_id,
+                        sr.coverage_type,
+                        sr.leave_start_date,
+                        sr.leave_end_date,
+                        sr.status,
+                        sr.created_at,
+                        t.teacher_id,
+                        t.teacher_name,
+                        t.employee_no
+                     ORDER BY
+                        FIELD(sr.status,'PENDING','PARTIALLY_ASSIGNED','ASSIGNED','CANCELLED'),
+                        sr.created_at DESC,
+                        sr.request_id DESC
+                     LIMIT 150",
+                    ['period' => $period, 'program' => $programId]
+                );
 
-    WHERE p.is_active = 1
-      AND p.education_level = 'College'
-
-    ORDER BY p.program_code
-    ",
-    [
-        'period' => $period
-    ]
-);
-
-if (!$programs) {
-    subFail(
-        404,
-        'NO_PROGRAMS',
-        'No active College programs are available.'
-    );
-}
-
-/*
- * On first load, prefer a program that already has
- * an ACTIVE saved timetable so the page immediately
- * shows useful class meetings.
- */
-$selected = null;
-
-foreach ($programs as $availableProgram) {
-
-    if (
-        (int)$availableProgram['has_active_timetable'] === 1
-    ) {
-        $selected = $availableProgram;
-        break;
-    }
-}
-
-/*
- * If no program currently has a timetable,
- * still show the first College program.
- */
-if ($selected === null) {
-    $selected = $programs[0];
-}
-
-/*
- * If user explicitly selected a program,
- * honor that selection whether or not it already
- * has an ACTIVE timetable.
- */
-if (
-    isset($_GET['program'])
-    && trim((string)$_GET['program']) !== ''
-) {
-
-    $requestedProgram = strtoupper(
-        trim((string)$_GET['program'])
-    );
-
-    foreach ($programs as $availableProgram) {
-
-        if (
-            strtoupper(
-                (string)$availableProgram['program_code']
-            ) === $requestedProgram
-        ) {
-            $selected = $availableProgram;
-            break;
-        }
-    }
-}
-
-$program = (string)$selected['program_code'];
-
-$programReady =
-    (int)$selected['has_active_timetable'] === 1;
-
-            /*
-             * Selected calendar date.
-             */
-            $date = subDate(
-                (string)(
-                    $_GET['date']
-                    ?? date('Y-m-d')
-                )
-            );
-
-            $day = subWeekday($date);
-
-            /*
-             * ACTIVE saved class meetings for the selected program,
-             * academic period and weekday.
-             *
-             * Existing ACTIVE one-day substitute assignments are
-             * joined without modifying the original class timetable.
-             */
-            $meetings = subRows(
-                $pdo,
-                "
-                SELECT
-                    m.meeting_id,
-                    m.batch_id,
-                    m.day_of_week,
-
-                    TIME_FORMAT(
+                $items = subRows(
+                    $pdo,
+                    "SELECT
+                        sri.request_item_id,
+                        sri.request_id,
+                        sri.meeting_id,
+                        sri.duty_date,
+                        sri.item_status,
+                        m.delivery_mode,
+                        m.day_of_week,
+                        TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+                        TIME_FORMAT(m.end_time,'%H:%i') AS end_time,
+                        sec.section_code,
+                        s.subject_code,
+                        s.subject_title,
+                        COALESCE(r.room_name,'ONLINE') AS room_name,
+                        sa.substitute_assignment_id,
+                        st.teacher_name AS substitute_teacher_name,
+                        st.employee_no AS substitute_employee_no
+                     FROM substitute_request_items sri
+                     JOIN substitute_requests sr ON sr.request_id=sri.request_id
+                     JOIN schedule_meetings m ON m.meeting_id=sri.meeting_id
+                     JOIN section_subjects ss ON ss.section_subject_id=m.section_subject_id
+                     JOIN sections sec ON sec.section_id=ss.section_id
+                     JOIN subjects s ON s.subject_id=ss.subject_id
+                     LEFT JOIN rooms r ON r.room_id=m.room_id
+                     LEFT JOIN substitute_assignments sa
+                       ON sa.request_item_id=sri.request_item_id
+                      AND sa.status='ACTIVE'
+                     LEFT JOIN teachers st ON st.teacher_id=sa.substitute_teacher_id
+                     WHERE sr.academic_period_id=:period
+                       AND sr.program_id=:program
+                     ORDER BY
+                        sri.duty_date,
                         m.start_time,
-                        '%H:%i'
-                    ) AS start_time,
+                        sec.section_code,
+                        s.subject_code",
+                    ['period' => $period, 'program' => $programId]
+                );
 
-                    TIME_FORMAT(
-                        m.end_time,
-                        '%H:%i'
-                    ) AS end_time,
-
-                    m.delivery_mode,
-
-                    sec.section_code,
-                    sec.section_type,
-
-                    s.subject_code,
-                    s.subject_title,
-
-                    t.teacher_name
-                        AS original_teacher_name,
-
-                    COALESCE(
-                        r.room_name,
-                        'ONLINE'
-                    ) AS room_name,
-
-                    sa.substitute_assignment_id,
-
-                    st.teacher_name
-                        AS substitute_teacher_name
-
-                FROM schedule_meetings m
-
-                INNER JOIN schedule_batches sb
-                    ON sb.batch_id = m.batch_id
-
-                INNER JOIN section_subjects ss
-                    ON ss.section_subject_id =
-                       m.section_subject_id
-
-                INNER JOIN sections sec
-                    ON sec.section_id = ss.section_id
-
-                INNER JOIN subjects s
-                    ON s.subject_id = ss.subject_id
-
-                INNER JOIN teachers t
-                    ON t.teacher_id = m.teacher_id
-
-                LEFT JOIN rooms r
-                    ON r.room_id = m.room_id
-
-                LEFT JOIN substitute_assignments sa
-                    ON sa.meeting_id = m.meeting_id
-                   AND sa.duty_date = :duty_date
-                   AND sa.status = 'ACTIVE'
-
-                LEFT JOIN teachers st
-                    ON st.teacher_id =
-                       sa.substitute_teacher_id
-
-                WHERE sb.academic_period_id = :period
-                  AND sb.program_id = :program
-                  AND sb.status = 'ACTIVE'
-                  AND sb.data_origin = 'DEMO'
-                  AND m.day_of_week = :day
-
-                ORDER BY
-                    m.start_time,
-                    sec.section_code,
-                    s.subject_code,
-                    m.meeting_id
-                ",
-                [
-                    'duty_date' => $date,
-                    'period' => $period,
-                    'program' => $selected['program_id'],
-                    'day' => $day
-                ]
-            );
-
-            /*
-             * Substitute assignment history.
-             *
-             * Historical assignments remain visible even when the
-             * source class timetable batch has been superseded.
-             */
-            $history = subRows(
-                $pdo,
-                "
-                SELECT
-                    sa.substitute_assignment_id,
-                    sa.duty_date,
-                    sa.status,
-                    sa.reason,
-                    sa.cancellation_reason,
-                    sa.created_at,
-                    sa.cancelled_at,
-
-                    sec.section_code,
-                    s.subject_code,
-
-                    m.delivery_mode,
-
-                    TIME_FORMAT(
-                        m.start_time,
-                        '%H:%i'
-                    ) AS start_time,
-
-                    TIME_FORMAT(
-                        m.end_time,
-                        '%H:%i'
-                    ) AS end_time,
-
-                    ot.teacher_name
-                        AS original_teacher_name,
-
-                    st.teacher_name
-                        AS substitute_teacher_name,
-
-                    CASE
-                        WHEN sb.status = 'ACTIVE'
-                        THEN 1
-                        ELSE 0
-                    END AS source_batch_active
-
-                FROM substitute_assignments sa
-
-                INNER JOIN schedule_meetings m
-                    ON m.meeting_id = sa.meeting_id
-
-                INNER JOIN schedule_batches sb
-                    ON sb.batch_id =
-                       sa.class_batch_id
-
-                INNER JOIN section_subjects ss
-                    ON ss.section_subject_id =
-                       m.section_subject_id
-
-                INNER JOIN sections sec
-                    ON sec.section_id = ss.section_id
-
-                INNER JOIN subjects s
-                    ON s.subject_id = ss.subject_id
-
-                INNER JOIN teachers ot
-                    ON ot.teacher_id =
-                       sa.original_teacher_id
-
-                INNER JOIN teachers st
-                    ON st.teacher_id =
-                       sa.substitute_teacher_id
-
-                WHERE sa.academic_period_id = :period
-                  AND sb.program_id = :program
-
-                ORDER BY
-                    sa.created_at DESC,
-                    sa.substitute_assignment_id DESC
-
-                LIMIT 150
-                ",
-                [
-                    'period' => $period,
-                    'program' => $selected['program_id']
-                ]
-            );
-
-            /*
-             * Successful catalog response.
-             */
-            subReply(
-                200,
-                [
-                    'success' => true,
-                    'status' => 'SUBSTITUTE_CATALOG_READY',
-
-                    'periods' => $periods,
-                    'programs' => $programs,
-
-                    'selected_period_id' => $period,
-                    'selected_program' => $selected,
-
-                    'selected_date' => $date,
-                    'selected_weekday' => $day,
-
-                    'meetings' => $meetings,
-                    'history' => $history,
-
-                    'csrf_token' =>
-                        $_SESSION['sub_csrf'],
-
-                    'database_write' => false
-                ]
-            );
-        }
-
-        /*
-         * ========================================================
-         * SUBSTITUTE CANDIDATES
-         * ========================================================
-         */
-        if ($action === 'candidates') {
-
-            $period = subInt(
-                $_GET['period_id'] ?? null,
-                'period'
-            );
-
-            $meetingId = subInt(
-                $_GET['meeting_id'] ?? null,
-                'meeting'
-            );
-
-            $date = subDate(
-                $_GET['date'] ?? null
-            );
-
-            /*
-             * Read latest meeting facts from DB.
-             */
-            $meeting = subMeeting(
-                $pdo,
-                $meetingId,
-                $period
-            );
-
-            /*
-             * One-day substitute assignment must match the recurring
-             * weekday of the original saved class.
-             */
-            if (
-                $meeting['day_of_week']
-                !== subWeekday($date)
-            ) {
-                subFail(
-                    400,
-                    'DAY_MISMATCH',
-                    'The selected date does not match the class weekday.'
+                $history = subRows(
+                    $pdo,
+                    "SELECT
+                        sa.substitute_assignment_id,
+                        sa.request_item_id,
+                        sa.duty_date,
+                        sa.status,
+                        sa.created_at,
+                        sa.cancelled_at,
+                        sec.section_code,
+                        s.subject_code,
+                        s.subject_title,
+                        m.delivery_mode,
+                        TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+                        TIME_FORMAT(m.end_time,'%H:%i') AS end_time,
+                        ot.teacher_name AS original_teacher_name,
+                        st.teacher_name AS substitute_teacher_name,
+                        CASE WHEN sb.status='ACTIVE' THEN 1 ELSE 0 END AS source_batch_active
+                     FROM substitute_assignments sa
+                     JOIN schedule_meetings m ON m.meeting_id=sa.meeting_id
+                     JOIN schedule_batches sb ON sb.batch_id=sa.class_batch_id
+                     JOIN section_subjects ss ON ss.section_subject_id=m.section_subject_id
+                     JOIN sections sec ON sec.section_id=ss.section_id
+                     JOIN subjects s ON s.subject_id=ss.subject_id
+                     JOIN teachers ot ON ot.teacher_id=sa.original_teacher_id
+                     JOIN teachers st ON st.teacher_id=sa.substitute_teacher_id
+                     WHERE sa.academic_period_id=:period
+                       AND sb.program_id=:program
+                     ORDER BY sa.created_at DESC,sa.substitute_assignment_id DESC
+                     LIMIT 150",
+                    ['period' => $period, 'program' => $programId]
                 );
             }
 
-            /*
-             * Check if the meeting/date already has an ACTIVE
-             * substitute.
-             */
-            $already = subOne(
-                $pdo,
-                "
-                SELECT
-                    substitute_assignment_id
-                FROM substitute_assignments
-                WHERE meeting_id = :meeting
-                  AND duty_date = :date
-                  AND status = 'ACTIVE'
-                ",
-                [
-                    'meeting' => $meetingId,
-                    'date' => $date
-                ]
-            );
+            subReply(200, [
+                'success' => true,
+                'status' => 'SUBSTITUTE_REQUEST_INBOX_READY',
+                'periods' => $periods,
+                'programs' => $programs,
+                'selected_period_id' => $period,
+                'selected_program' => $selected,
+                'requests' => $requests,
+                'request_items' => $items,
+                'history' => $history,
+                'csrf_token' => authCsrf(),
+                'database_write' => false,
+            ]);
+        }
 
-            /*
-             * Candidate pool:
-             * same program, ACTIVE faculty, DEMO data.
-             */
+        if ($action === 'candidates') {
+            $period = subInt($_GET['period_id'] ?? null, 'period');
+            $requestItemId = subInt($_GET['request_item_id'] ?? null, 'request item');
+
+            $item = subRequestItem($pdo, $requestItemId, $period);
+
+            if ($item['request_status'] === 'CANCELLED' || $item['item_status'] === 'CANCELLED') {
+                subFail(409, 'REQUEST_CANCELLED', 'This request has been cancelled.');
+            }
+
+            if ($item['item_status'] === 'ASSIGNED') {
+                subFail(409, 'DUTY_ALREADY_ASSIGNED', 'This class already has a substitute assignment.');
+            }
+
+            $meeting = subMeeting($pdo, (int)$item['meeting_id'], $period);
+
+            if ((int)$meeting['batch_id'] !== (int)$item['class_batch_id']) {
+                subFail(
+                    409,
+                    'SOURCE_BATCH_CHANGED',
+                    'The source class timetable changed after the request was recorded.'
+                );
+            }
+
+            $date = (string)$item['duty_date'];
+
             $teachers = subRows(
                 $pdo,
-                "
-                SELECT
-                    teacher_id,
-                    teacher_name,
-                    employee_no
-                FROM teachers
-                WHERE program_id = :program
-                  AND status = 'ACTIVE'
-                  AND data_origin = 'DEMO'
-                ORDER BY teacher_name
-                ",
-                [
-                    'program' =>
-                        $meeting['program_id']
-                ]
+                "SELECT teacher_id,teacher_name,employee_no,max_daily_hours,max_weekly_hours
+                 FROM teachers
+                 WHERE program_id=:program
+                   AND status='ACTIVE'
+                 ORDER BY teacher_name",
+                ['program' => $meeting['program_id']]
             );
 
             $candidates = [];
 
-            foreach ($teachers as $teacherRow) {
-
-                $teacherId =
-                    (int)$teacherRow['teacher_id'];
-
-                /*
-                 * Server-side eligibility checks include:
-                 * authorization,
-                 * teacher availability,
-                 * saved class conflicts,
-                 * exam conflicts,
-                 * other substitute duties, etc.
-                 */
-                $issues = subTeacherIssues(
-                    $pdo,
-                    $meeting,
-                    $date,
-                    $teacherId
-                );
-
-                if ($already) {
-                    $issues[] =
-                        'This class already has an ACTIVE substitute on the selected date.';
-                }
+            foreach ($teachers as $teacher) {
+                $teacherId = (int)$teacher['teacher_id'];
+                $issues = subTeacherIssues($pdo, $meeting, $date, $teacherId);
+                $load = subCandidateLoad($pdo, $meeting, $date, $teacherId);
 
                 $candidates[] = [
                     'teacher_id' => $teacherId,
-
-                    'teacher_name' =>
-                        $teacherRow['teacher_name'],
-
-                    'employee_no' =>
-                        $teacherRow['employee_no'],
-
-                    'eligible' =>
-                        count($issues) === 0,
-
-                    'issues' => $issues
+                    'teacher_name' => (string)$teacher['teacher_name'],
+                    'employee_no' => (string)$teacher['employee_no'],
+                    'eligible' => count($issues) === 0,
+                    'issues' => $issues,
+                    'max_daily_hours' => (int)$teacher['max_daily_hours'],
+                    'max_weekly_hours' => (int)$teacher['max_weekly_hours'],
+                    'projected_daily_minutes' => $load['projected_daily_minutes'],
+                    'projected_weekly_minutes' => $load['projected_weekly_minutes'],
+                    'recommended' => false,
                 ];
             }
 
-            subReply(
-                200,
-                [
-                    'success' => true,
+            usort($candidates, static function (array $a, array $b): int {
+                if ($a['eligible'] !== $b['eligible']) {
+                    return $a['eligible'] ? -1 : 1;
+                }
+                if ($a['projected_weekly_minutes'] !== $b['projected_weekly_minutes']) {
+                    return $a['projected_weekly_minutes'] <=> $b['projected_weekly_minutes'];
+                }
+                if ($a['projected_daily_minutes'] !== $b['projected_daily_minutes']) {
+                    return $a['projected_daily_minutes'] <=> $b['projected_daily_minutes'];
+                }
+                return strcasecmp($a['teacher_name'], $b['teacher_name']);
+            });
 
-                    'status' =>
-                        'SUBSTITUTE_CANDIDATES_READY',
+            foreach ($candidates as &$candidate) {
+                if ($candidate['eligible']) {
+                    $candidate['recommended'] = true;
+                    break;
+                }
+            }
+            unset($candidate);
 
-                    'meeting' => $meeting,
-                    'duty_date' => $date,
-
-                    'candidates' => $candidates,
-
-                    'available_count' =>
-                        count(
-                            array_filter(
-                                $candidates,
-                                static fn(array $candidate): bool =>
-                                    $candidate['eligible'] === true
-                            )
-                        ),
-
-                    'database_write' => false
-                ]
-            );
+            subReply(200, [
+                'success' => true,
+                'status' => 'SUBSTITUTE_CANDIDATES_READY',
+                'request_item' => $item,
+                'meeting' => $meeting,
+                'duty_date' => $date,
+                'candidates' => $candidates,
+                'available_count' => count(array_filter(
+                    $candidates,
+                    static fn(array $teacher): bool => $teacher['eligible']
+                )),
+                'database_write' => false,
+            ]);
         }
 
-        /*
-         * Unknown GET action.
-         */
-        subFail(
-            400,
-            'INVALID_ACTION',
-            'Unknown tracker action.'
-        );
+        subFail(400, 'INVALID_ACTION', 'Unknown tracker action.');
     }
 
-    /*
-     * ============================================================
-     * POST REQUESTS
-     * ============================================================
-     */
+    $input = json_decode(file_get_contents('php://input'), true, 512, JSON_THROW_ON_ERROR);
 
-    /*
-     * All writes remain local DEMO writes.
-     * Browser assignments are still independently revalidated on
-     * the server before persistence.
-     */
-    $input = json_decode(
-        file_get_contents('php://input'),
-        true,
-        512,
-        JSON_THROW_ON_ERROR
-    );
-
-    /*
-     * Session CSRF protection.
-     */
-    if (
-        !is_array($input)
-        || !is_string(
-            $input['csrf_token'] ?? null
-        )
-        || !hash_equals(
-            (string)$_SESSION['sub_csrf'],
-            $input['csrf_token']
-        )
-    ) {
-        subFail(
-            403,
-            'INVALID_CSRF',
-            'Refresh the module and try again.'
-        );
+    if (!is_array($input) || !authCsrfValid($input['csrf_token'] ?? null)) {
+        subFail(403, 'INVALID_CSRF', 'Refresh the module and try again.');
     }
 
-    $action = (string)(
-        $input['action'] ?? ''
-    );
+    $action = (string)($input['action'] ?? '');
+    $period = subInt($input['period_id'] ?? null, 'period');
 
-    $period = subInt(
-        $input['period_id'] ?? null,
-        'period'
-    );
+    $lockName = 'bcp_substitute_period_' . $period;
+    $stmt = $pdo->prepare('SELECT GET_LOCK(:key,10)');
+    $stmt->execute(['key' => $lockName]);
 
-    /*
-     * Period-specific database mutex.
-     */
-    $lockName =
-        'bcp_substitute_period_' . $period;
-
-    $stmt = $pdo->prepare(
-        'SELECT GET_LOCK(:key,10)'
-    );
-
-    $stmt->execute([
-        'key' => $lockName
-    ]);
-
-    if (
-        (int)$stmt->fetchColumn() !== 1
-    ) {
-        subFail(
-            409,
-            'TRACKER_BUSY',
-            'Another substitution is being updated. Retry.'
-        );
+    if ((int)$stmt->fetchColumn() !== 1) {
+        subFail(409, 'TRACKER_BUSY', 'Another substitution is being updated. Retry.');
     }
 
     $locked = true;
-
     $pdo->beginTransaction();
 
-    /*
-     * Lock all class schedule batches in the period.
-     * This detects timetable replacement while the substitute
-     * assignment is being processed.
-     */
     subRows(
         $pdo,
-        "
-        SELECT
-            batch_id,
-            status
-        FROM schedule_batches
-        WHERE academic_period_id = :period
-        ORDER BY batch_id
-        FOR UPDATE
-        ",
-        [
-            'period' => $period
-        ]
+        "SELECT batch_id,status
+         FROM schedule_batches
+         WHERE academic_period_id=:period
+         ORDER BY batch_id
+         FOR UPDATE",
+        ['period' => $period]
     );
 
-    /*
-     * ============================================================
-     * ASSIGN SUBSTITUTE
-     * ============================================================
-     */
     if ($action === 'assign') {
+        $requestItemId = subInt($input['request_item_id'] ?? null, 'request item');
+        $teacherId = subInt($input['substitute_teacher_id'] ?? null, 'substitute professor');
 
-        $meetingId = subInt(
-            $input['meeting_id'] ?? null,
-            'meeting'
-        );
+        $item = subRequestItem($pdo, $requestItemId, $period, true);
 
-        $teacher = subInt(
-            $input['substitute_teacher_id']
-                ?? null,
-            'substitute professor'
-        );
-
-        $date = subDate(
-            $input['duty_date'] ?? null
-        );
-
-        $reason = trim(
-            (string)(
-                $input['reason'] ?? ''
-            )
-        );
-
-        if (
-            subTextLength($reason) < 5
-            || subTextLength($reason) > 500
-        ) {
-            subFail(
-                400,
-                'INVALID_REASON',
-                'Enter a brief reason (5–500 characters).'
-            );
+        if ($item['request_status'] === 'CANCELLED' || $item['item_status'] === 'CANCELLED') {
+            subFail(409, 'REQUEST_CANCELLED', 'This request has been cancelled.');
         }
 
-        /*
-         * Re-read meeting from current DB.
-         */
-        $meeting = subMeeting(
-            $pdo,
-            $meetingId,
-            $period
-        );
-
-        if (
-            $meeting['day_of_week']
-            !== subWeekday($date)
-        ) {
-            subFail(
-                400,
-                'DAY_MISMATCH',
-                'Selected date does not match the regular class day.'
-            );
+        if ($item['item_status'] === 'ASSIGNED') {
+            subFail(409, 'DUTY_ALREADY_ASSIGNED', 'This class already has a substitute assignment.');
         }
 
-        /*
-         * Protect against duplicate ACTIVE assignment.
-         */
-        $exists = subRows(
+        $meeting = subMeeting($pdo, (int)$item['meeting_id'], $period);
+
+        if ((int)$meeting['batch_id'] !== (int)$item['class_batch_id']) {
+            subFail(409, 'SOURCE_BATCH_CHANGED', 'The source timetable changed. Refresh.');
+        }
+
+        if ((int)$meeting['original_teacher_id'] !== (int)$item['original_teacher_id']) {
+            subFail(409, 'ORIGINAL_TEACHER_CHANGED', 'The original professor changed. Refresh.');
+        }
+
+        $date = (string)$item['duty_date'];
+
+        $exists = subOne(
             $pdo,
-            "
-            SELECT
-                substitute_assignment_id
-            FROM substitute_assignments
-            WHERE meeting_id = :meeting
-              AND duty_date = :date
-              AND status = 'ACTIVE'
-            FOR UPDATE
-            ",
+            "SELECT substitute_assignment_id
+             FROM substitute_assignments
+             WHERE meeting_id=:meeting
+               AND duty_date=:date
+               AND status='ACTIVE'
+             FOR UPDATE",
             [
-                'meeting' => $meetingId,
+                'meeting' => $meeting['meeting_id'],
                 'date' => $date
             ]
         );
 
         if ($exists) {
-            subFail(
-                409,
-                'DUTY_ALREADY_ASSIGNED',
-                'A substitute is already assigned for this meeting/date.'
-            );
+            subFail(409, 'DUTY_ALREADY_ASSIGNED', 'A substitute is already assigned for this class/date.');
         }
 
-        /*
-         * Full current eligibility validation.
-         */
-        $issues = subTeacherIssues(
-            $pdo,
-            $meeting,
-            $date,
-            $teacher
-        );
+        $issues = subTeacherIssues($pdo, $meeting, $date, $teacherId);
 
         if ($issues) {
-            subFail(
-                422,
-                'SUBSTITUTE_NOT_ELIGIBLE',
-                implode(' ', $issues)
-            );
+            subFail(422, 'SUBSTITUTE_NOT_ELIGIBLE', implode(' ', $issues));
         }
 
-        /*
-         * Save one-day temporary assignment.
-         *
-         * Original schedule meeting remains unchanged.
-         */
         $stmt = $pdo->prepare(
-            "
-            INSERT INTO substitute_assignments
-            (
-                meeting_id,
-                class_batch_id,
-                academic_period_id,
-                duty_date,
-                original_teacher_id,
-                substitute_teacher_id,
-                reason,
-                status
-            )
-            VALUES
-            (
-                :meeting,
-                :batch,
-                :period,
-                :date,
-                :original,
-                :teacher,
-                :reason,
-                'ACTIVE'
-            )
-            "
+            "INSERT INTO substitute_assignments
+                (meeting_id,class_batch_id,academic_period_id,request_item_id,duty_date,
+                 original_teacher_id,substitute_teacher_id,status)
+             VALUES
+                (:meeting,:batch,:period,:request_item,:date,:original,:teacher,'ACTIVE')"
         );
 
         $stmt->execute([
-            'meeting' => $meetingId,
+            'meeting' => $meeting['meeting_id'],
             'batch' => $meeting['batch_id'],
             'period' => $period,
+            'request_item' => $requestItemId,
             'date' => $date,
-
-            'original' =>
-                $meeting['original_teacher_id'],
-
-            'teacher' => $teacher,
-            'reason' => $reason
+            'original' => $meeting['original_teacher_id'],
+            'teacher' => $teacherId,
         ]);
 
-        $newId = (int)$pdo->lastInsertId();
+        $assignmentId = (int)$pdo->lastInsertId();
 
-        $pdo->commit();
-
-        /*
-         * Release mutex before response.
-         */
-        $pdo
-            ->prepare(
-                'SELECT RELEASE_LOCK(:key)'
-            )
-            ->execute([
-                'key' => $lockName
-            ]);
-
-        $locked = false;
-
-        subReply(
-            200,
-            [
-                'success' => true,
-                'status' =>
-                    'SUBSTITUTE_ASSIGNED',
-
-                'substitute_assignment_id' =>
-                    $newId,
-
-                'meeting_id' =>
-                    $meetingId,
-
-                'duty_date' =>
-                    $date,
-
-                'database_write' => true
-            ]
-        );
-    }
-
-    /*
-     * ============================================================
-     * CANCEL SUBSTITUTE ASSIGNMENT
-     * ============================================================
-     */
-    if ($action === 'cancel') {
-
-        $id = subInt(
-            $input['substitute_assignment_id']
-                ?? null,
-            'substitute assignment'
-        );
-
-        $reason = trim(
-            (string)(
-                $input['cancellation_reason']
-                ?? ''
-            )
-        );
-
-        if (
-            subTextLength($reason) < 5
-            || subTextLength($reason) > 500
-        ) {
-            subFail(
-                400,
-                'INVALID_REASON',
-                'Enter a cancellation reason (5–500 characters).'
-            );
-        }
-
-        /*
-         * Lock current assignment record.
-         */
-        $record = subOne(
-            $pdo,
-            "
-            SELECT
-                sa.substitute_assignment_id,
-                sa.status,
-                sa.class_batch_id
-            FROM substitute_assignments sa
-            WHERE
-                sa.substitute_assignment_id = :id
-                AND sa.academic_period_id =
-                    :period
-            FOR UPDATE
-            ",
-            [
-                'id' => $id,
-                'period' => $period
-            ]
-        );
-
-        if (
-            !$record
-            || $record['status'] !== 'ACTIVE'
-        ) {
-            subFail(
-                409,
-                'ASSIGNMENT_NOT_ACTIVE',
-                'The substitute assignment is already cancelled or unavailable.'
-            );
-        }
-
-        /*
-         * Preserve assignment historically.
-         * Never delete the record.
-         */
         $stmt = $pdo->prepare(
-            "
-            UPDATE substitute_assignments
-            SET
-                status = 'CANCELLED',
-                cancelled_at =
-                    CURRENT_TIMESTAMP,
-                cancellation_reason =
-                    :reason
-            WHERE
-                substitute_assignment_id = :id
-                AND status = 'ACTIVE'
-            "
+            "UPDATE substitute_request_items
+             SET item_status='ASSIGNED'
+             WHERE request_item_id=:item
+               AND item_status='PENDING'"
         );
-
-        $stmt->execute([
-            'reason' => $reason,
-            'id' => $id
-        ]);
+        $stmt->execute(['item' => $requestItemId]);
 
         if ($stmt->rowCount() !== 1) {
-            subFail(
-                409,
-                'CANCEL_CONFLICT',
-                'This assignment was changed. Refresh.'
-            );
+            subFail(409, 'REQUEST_ITEM_CHANGED', 'This request item changed. Refresh.');
+        }
+
+        subRefreshRequestStatus($pdo, (int)$item['request_id']);
+
+        $pdo->commit();
+        $pdo->prepare('SELECT RELEASE_LOCK(:key)')->execute(['key' => $lockName]);
+        $locked = false;
+
+        subReply(200, [
+            'success' => true,
+            'status' => 'SUBSTITUTE_ASSIGNED',
+            'substitute_assignment_id' => $assignmentId,
+            'request_item_id' => $requestItemId,
+            'duty_date' => $date,
+            'database_write' => true,
+        ]);
+    }
+
+    if ($action === 'cancel_assignment') {
+        $assignmentId = subInt($input['substitute_assignment_id'] ?? null, 'substitute assignment');
+
+        $assignment = subOne(
+            $pdo,
+            "SELECT substitute_assignment_id,request_item_id,status
+             FROM substitute_assignments
+             WHERE substitute_assignment_id=:id
+               AND academic_period_id=:period
+             FOR UPDATE",
+            ['id' => $assignmentId, 'period' => $period]
+        );
+
+        if (!$assignment || $assignment['status'] !== 'ACTIVE') {
+            subFail(409, 'ASSIGNMENT_NOT_ACTIVE', 'The substitute assignment is already cancelled.');
+        }
+
+        $stmt = $pdo->prepare(
+            "UPDATE substitute_assignments
+             SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP
+             WHERE substitute_assignment_id=:id
+               AND status='ACTIVE'"
+        );
+        $stmt->execute(['id' => $assignmentId]);
+
+        if ($stmt->rowCount() !== 1) {
+            subFail(409, 'CANCEL_CONFLICT', 'This assignment was changed. Refresh.');
+        }
+
+        $requestItemId = (int)($assignment['request_item_id'] ?? 0);
+
+        if ($requestItemId > 0) {
+            $item = subRequestItem($pdo, $requestItemId, $period, true);
+
+            if ($item['request_status'] !== 'CANCELLED') {
+                $pdo->prepare(
+                    "UPDATE substitute_request_items
+                     SET item_status='PENDING'
+                     WHERE request_item_id=:item"
+                )->execute(['item' => $requestItemId]);
+
+                subRefreshRequestStatus($pdo, (int)$item['request_id']);
+            }
         }
 
         $pdo->commit();
-
-        $pdo
-            ->prepare(
-                'SELECT RELEASE_LOCK(:key)'
-            )
-            ->execute([
-                'key' => $lockName
-            ]);
-
+        $pdo->prepare('SELECT RELEASE_LOCK(:key)')->execute(['key' => $lockName]);
         $locked = false;
 
-        subReply(
-            200,
-            [
-                'success' => true,
-
-                'status' =>
-                    'SUBSTITUTE_CANCELLED',
-
-                'substitute_assignment_id' =>
-                    $id,
-
-                'database_write' => true
-            ]
-        );
+        subReply(200, [
+            'success' => true,
+            'status' => 'SUBSTITUTE_CANCELLED',
+            'substitute_assignment_id' => $assignmentId,
+            'database_write' => true,
+        ]);
     }
 
-    /*
-     * Unknown POST action.
-     */
     subFail(
         400,
         'INVALID_ACTION',
-        'Only assign or cancel is supported.'
+        'Supported actions: assign, cancel_assignment.'
     );
 
 } catch (SubstituteError $e) {
-
-    /*
-     * Roll back any unfinished transaction.
-     */
-    if (
-        $pdo instanceof PDO
-        && $pdo->inTransaction()
-    ) {
+    if ($pdo instanceof PDO && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
 
-    /*
-     * Always release database mutex.
-     */
-    if (
-        $pdo instanceof PDO
-        && $locked
-    ) {
+    if ($pdo instanceof PDO && $locked) {
         try {
-
-            $pdo
-                ->prepare(
-                    'SELECT RELEASE_LOCK(:key)'
-                )
-                ->execute([
-                    'key' => $lockName
-                ]);
-
+            $pdo->prepare('SELECT RELEASE_LOCK(:key)')->execute(['key' => $lockName]);
         } catch (Throwable) {
-            // Nothing else should override
-            // the original API error.
         }
     }
 
-    subReply(
-        $e->httpCode,
-        [
-            'success' => false,
-
-            'status' =>
-                $e->apiStatus,
-
-            'message' =>
-                $e->getMessage(),
-
-            'database_write' => false
-        ]
-    );
+    subReply($e->httpCode, [
+        'success' => false,
+        'status' => $e->apiStatus,
+        'message' => $e->getMessage(),
+        'database_write' => false,
+    ]);
 
 } catch (Throwable $e) {
-
-    /*
-     * Roll back any unfinished transaction.
-     */
-    if (
-        $pdo instanceof PDO
-        && $pdo->inTransaction()
-    ) {
+    if ($pdo instanceof PDO && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
 
-    /*
-     * Release named lock even after unexpected failure.
-     */
-    if (
-        $pdo instanceof PDO
-        && $locked
-    ) {
+    if ($pdo instanceof PDO && $locked) {
         try {
-
-            $pdo
-                ->prepare(
-                    'SELECT RELEASE_LOCK(:key)'
-                )
-                ->execute([
-                    'key' => $lockName
-                ]);
-
+            $pdo->prepare('SELECT RELEASE_LOCK(:key)')->execute(['key' => $lockName]);
         } catch (Throwable) {
-            // Ignore secondary cleanup error.
         }
     }
 
-    error_log(
-        'BCP Substitute Tracker: '
-        . $e->getMessage()
-    );
+    error_log('BCP Substitute Tracker: ' . $e->getMessage());
 
-    subReply(
-        500,
-        [
-            'success' => false,
-
-            'status' =>
-                'SUBSTITUTE_API_ERROR',
-
-            'message' =>
-                'Substitute action failed; see PHP error log. No partial update should be saved.',
-
-            'database_write' => false
-        ]
-    );
+    subReply(500, [
+        'success' => false,
+        'status' => 'SUBSTITUTE_API_ERROR',
+        'message' => 'Substitute action failed; check the PHP error log. No partial update was saved.',
+        'database_write' => false,
+    ]);
 }

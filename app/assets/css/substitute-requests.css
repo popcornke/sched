@@ -1,0 +1,366 @@
+
+/* Module 5 request inbox additions. Scoped to the substitute tracker page. */
+
+.subreq-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(330px,1fr));
+    gap:16px;
+}
+
+.subreq-card{
+    border:1px solid #e2e8f0;
+    border-radius:20px;
+    padding:18px;
+    background:#fff;
+    box-shadow:0 10px 28px rgba(15,23,42,.045);
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+}
+
+.subreq-card.is-pending{
+    border-color:#cbdcfb;
+    box-shadow:0 12px 30px rgba(30,64,175,.07);
+}
+
+.subreq-card__head,
+.subreq-card__footer,
+.subreq-item__top,
+.subreq-candidate__head,
+.subreq-suggestion-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:14px;
+}
+
+.subreq-card__head>div{
+    display:grid;
+    gap:3px;
+}
+
+.subreq-card__head strong{
+    color:#102f62;
+    font-size:1rem;
+}
+
+.subreq-card__head small,
+.subreq-card__hint{
+    color:#6b7b98;
+}
+
+.subreq-card__eyebrow{
+    color:#2c55a2;
+    font-weight:800;
+    font-size:.72rem;
+    letter-spacing:.08em;
+}
+
+.subreq-status,
+.subreq-mini-status,
+.subreq-recommended,
+.subreq-option{
+    border-radius:999px;
+    padding:6px 9px;
+    font-size:.67rem;
+    font-weight:800;
+    letter-spacing:.04em;
+    white-space:nowrap;
+}
+
+.subreq-status--pending,
+.subreq-mini-status--pending{
+    background:#fff4db;
+    color:#8c5c00;
+}
+
+.subreq-status--partially_assigned{
+    background:#eaf2ff;
+    color:#2452a3;
+}
+
+.subreq-status--assigned,
+.subreq-mini-status--assigned{
+    background:#e8f8ef;
+    color:#176b3a;
+}
+
+.subreq-status--cancelled,
+.subreq-mini-status--cancelled{
+    background:#f3f4f6;
+    color:#667085;
+}
+
+.subreq-card__meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 14px;
+    color:#536580;
+    font-size:.83rem;
+}
+
+.subreq-card__meta span{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+}
+
+.subreq-card__preview{
+    display:grid;
+    gap:6px;
+    padding:12px;
+    border-radius:14px;
+    background:#f7f9fd;
+    color:#52647f;
+    font-size:.8rem;
+}
+
+.subreq-empty,
+.subreq-loading{
+    min-height:180px;
+    border:1px dashed #d6deea;
+    border-radius:18px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:28px;
+    color:#6b7b98;
+    gap:8px;
+}
+
+.subreq-empty i,
+.subreq-loading i{
+    font-size:1.5rem;
+    color:#2b57a5;
+}
+
+.subreq-empty strong,
+.subreq-loading strong{
+    color:#173968;
+}
+
+.subreq-modal__dialog{
+    width:min(1120px,calc(100vw - 32px));
+    max-height:88vh;
+}
+
+.subreq-modal__body{
+    display:grid;
+    grid-template-columns:minmax(300px,.85fr) minmax(420px,1.15fr);
+    min-height:520px;
+    max-height:66vh;
+    overflow:hidden;
+}
+
+.subreq-request-pane{
+    padding:22px;
+    border-right:1px solid #e4e9f2;
+    overflow:auto;
+    background:#fbfcff;
+}
+
+.subreq-suggestion-pane{
+    padding:22px;
+    overflow:auto;
+}
+
+.subreq-request-summary{
+    display:grid;
+    gap:4px;
+    border:1px solid #dfe7f2;
+    border-radius:18px;
+    padding:16px;
+    background:#fff;
+}
+
+.subreq-request-summary strong{
+    font-size:1.06rem;
+    color:#12356b;
+}
+
+.subreq-request-summary small{
+    color:#6b7b98;
+}
+
+.subreq-request-summary>div{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 14px;
+    margin-top:9px;
+    color:#51647f;
+    font-size:.8rem;
+}
+
+.subreq-request-summary>div span{
+    display:inline-flex;
+    gap:7px;
+    align-items:center;
+}
+
+.subreq-request-summary__id{
+    color:#2d58a6;
+    font-weight:800;
+    letter-spacing:.08em;
+    font-size:.68rem;
+}
+
+.subreq-pane-title{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:12px;
+    margin:22px 0 10px;
+}
+
+.subreq-pane-title span{
+    color:#153869;
+    font-weight:800;
+}
+
+.subreq-pane-title small{
+    color:#7a879b;
+}
+
+.subreq-item-list{
+    display:grid;
+    gap:9px;
+}
+
+.subreq-item{
+    width:100%;
+    border:1px solid #dfe6f1;
+    background:#fff;
+    text-align:left;
+    border-radius:14px;
+    padding:12px 13px;
+    display:grid;
+    gap:6px;
+    cursor:pointer;
+    transition:.18s ease;
+}
+
+.subreq-item:not(:disabled):hover,
+.subreq-item.is-selected{
+    border-color:#315dac;
+    box-shadow:0 6px 18px rgba(30,64,175,.08);
+    transform:translateY(-1px);
+}
+
+.subreq-item.is-selected{
+    background:#f3f7ff;
+}
+
+.subreq-item:disabled{
+    cursor:default;
+    opacity:.72;
+}
+
+.subreq-item__top strong{
+    color:#16386a;
+}
+
+.subreq-item>span,
+.subreq-item>small{
+    color:#62738e;
+    font-size:.78rem;
+}
+
+.subreq-suggestion-head h3{
+    margin:3px 0 0;
+    color:#13366b;
+}
+
+.subreq-context{
+    margin:14px 0;
+    padding:12px 14px;
+    border-radius:13px;
+    background:#f4f7fb;
+    color:#536680;
+    font-size:.83rem;
+}
+
+.subreq-candidates{
+    display:grid;
+    gap:12px;
+}
+
+.subreq-candidate{
+    border:1px solid #dde5f0;
+    border-radius:16px;
+    padding:15px;
+    display:grid;
+    gap:13px;
+    background:#fff;
+}
+
+.subreq-candidate.is-recommended{
+    border-color:#78a2e7;
+    box-shadow:0 10px 24px rgba(30,64,175,.09);
+}
+
+.subreq-candidate__head>div{
+    display:grid;
+    gap:2px;
+}
+
+.subreq-candidate__head strong{
+    color:#12356b;
+}
+
+.subreq-candidate__head small{
+    color:#75839a;
+}
+
+.subreq-recommended{
+    background:#e8f1ff;
+    color:#1f4f9d;
+}
+
+.subreq-option{
+    background:#f3f5f8;
+    color:#66758b;
+}
+
+.subreq-candidate__load{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:7px;
+}
+
+.subreq-candidate__load span{
+    padding:8px 10px;
+    border-radius:10px;
+    background:#f6f8fb;
+    font-size:.75rem;
+    color:#556680;
+}
+
+.subreq-candidate__load i{
+    margin-right:5px;
+    color:#2f7d54;
+}
+
+.subreq-footer-note{
+    margin-right:auto;
+    max-width:720px;
+    color:#718097;
+    font-size:.76rem;
+}
+
+@media (max-width:900px){
+    .subreq-modal__body{
+        grid-template-columns:1fr;
+        overflow:auto;
+    }
+
+    .subreq-request-pane{
+        border-right:0;
+        border-bottom:1px solid #e4e9f2;
+    }
+
+    .subreq-candidate__load{
+        grid-template-columns:1fr;
+    }
+}

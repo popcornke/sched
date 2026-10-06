@@ -152,6 +152,9 @@ function loginEscape(string $text): string
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome added for Show Password Icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
     <!-- External CSS link mapping to your assets folder -->
     <link rel="stylesheet" href="app/assets/css/login.css">
@@ -244,13 +247,22 @@ function loginEscape(string $text): string
 
                     <div class="form-group">
                         <label for="password">Password</label>
-                        <input
-                            type="password"
-                            id="password"
-                            name="password"
-                            placeholder="Enter your password"
-                            autocomplete="current-password"
-                            required>
+                        <!-- Added relative positioning for the icon wrapper -->
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                placeholder="Enter your password"
+                                autocomplete="current-password"
+                                required
+                                style="width: 100%; padding-right: 40px; box-sizing: border-box;"
+                            >
+                            <!-- Show Password Toggle Button -->
+                            <button type="button" id="togglePassword" title="Show/Hide Password" style="position: absolute; right: 12px; background: transparent; border: none; cursor: pointer; color: #647b9e; padding: 0; outline: none; display: flex; align-items: center; justify-content: center;">
+                                <i class="fa-regular fa-eye" id="toggleIcon" style="font-size: 15px;"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <button class="login-button" type="submit">
@@ -274,6 +286,25 @@ function loginEscape(string $text): string
 
     </main>
 
+    <!-- Show/Hide Password Script -->
+    <script>
+        const togglePassword = document.getElementById('togglePassword');
+        const password = document.getElementById('password');
+        const toggleIcon = document.getElementById('toggleIcon');
+
+        togglePassword.addEventListener('click', function () {
+            // Toggle the type attribute
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            
+            // Toggle the icon class
+            toggleIcon.classList.toggle('fa-eye');
+            toggleIcon.classList.toggle('fa-eye-slash');
+            
+            // Make icon slightly darker when password is visible
+            toggleIcon.style.color = type === 'text' ? '#1a3a8c' : '#647b9e';
+        });
+    </script>
 </body>
 
 </html>

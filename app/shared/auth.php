@@ -61,7 +61,7 @@ function authLogoutUrl(): string
 {
     return authBasePath() . '/logout.php';
 }
-const SESSION_IDLE_LIMIT = 1800;    // 30 minutes
+const SESSION_IDLE_LIMIT = 600;    // 10 minutes
 const SESSION_MAX_LIFETIME = 28800; // 8 hours
 
 function authDb(): PDO

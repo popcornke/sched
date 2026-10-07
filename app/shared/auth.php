@@ -65,7 +65,30 @@ function authAccountUrl(): string
     return authBasePath() . '/app/auth/account.php';
 }
 
-const SESSION_IDLE_LIMIT = 600;      // 10 minutes
+
+function authSessionExpiredUrl(
+    string $reason
+): string {
+    $shortReason = match ($reason) {
+        'IDLE_TIMEOUT' =>
+            'idle',
+
+        'MAX_SESSION_LIFETIME' =>
+            'maximum',
+
+        'SESSION_REVOKED' =>
+            'revoked',
+
+        default =>
+            'expired',
+    };
+
+    return authBasePath()
+        . '/session-expired.php?reason='
+        . rawurlencode($shortReason);
+}
+
+const SESSION_IDLE_LIMIT = 600;     // 10 minutes
 const SESSION_MAX_LIFETIME = 28800;  // 8 hours
 
 /*
@@ -206,34 +229,245 @@ function authClear(): void
     session_destroy();
 }
 
-function authLoggedIn(): bool
-{
+function authSessionState(
+    bool $clearExpired = false
+): array {
     authStart();
-
-    if (empty($_SESSION['auth_user_id'])) {
-        return false;
-    }
 
     $now = time();
 
+    $userId = (int) (
+        $_SESSION['auth_user_id']
+        ?? 0
+    );
+
     $lastActivity = (int) (
-        $_SESSION['auth_last_activity'] ?? 0
+        $_SESSION['auth_last_activity']
+        ?? 0
     );
 
     $loginTime = (int) (
-        $_SESSION['auth_login_time'] ?? 0
+        $_SESSION['auth_login_time']
+        ?? 0
     );
+
+    if ($userId <= 0) {
+        return [
+            'active' => false,
+            'reason' => 'NO_SESSION',
+            'server_time' => $now,
+            'user_id' => 0,
+            'login_time' => 0,
+            'last_activity' => 0,
+            'idle_remaining' => 0,
+            'max_remaining' => 0,
+            'expires_in' => 0,
+        ];
+    }
 
     if (
         $lastActivity <= 0
         || $loginTime <= 0
-        || ($now - $lastActivity) > SESSION_IDLE_LIMIT
-        || ($now - $loginTime) > SESSION_MAX_LIFETIME
+    ) {
+        $state = [
+            'active' => false,
+            'reason' => 'INVALID_SESSION',
+            'server_time' => $now,
+            'user_id' => $userId,
+            'login_time' => $loginTime,
+            'last_activity' => $lastActivity,
+            'idle_remaining' => 0,
+            'max_remaining' => 0,
+            'expires_in' => 0,
+        ];
+
+        if ($clearExpired) {
+            authClear();
+        }
+
+        return $state;
+    }
+
+    $idleExpiresAt =
+        $lastActivity
+        + SESSION_IDLE_LIMIT;
+
+    $maxExpiresAt =
+        $loginTime
+        + SESSION_MAX_LIFETIME;
+
+    $idleRemaining = max(
+        0,
+        $idleExpiresAt - $now
+    );
+
+    $maxRemaining = max(
+        0,
+        $maxExpiresAt - $now
+    );
+
+    $expiresAt = min(
+        $idleExpiresAt,
+        $maxExpiresAt
+    );
+
+    if ($now >= $expiresAt) {
+        $reason =
+            $idleExpiresAt
+            <= $maxExpiresAt
+                ? 'IDLE_TIMEOUT'
+                : 'MAX_SESSION_LIFETIME';
+
+        $state = [
+            'active' => false,
+            'reason' => $reason,
+            'server_time' => $now,
+            'user_id' => $userId,
+            'login_time' => $loginTime,
+            'last_activity' => $lastActivity,
+            'idle_remaining' => $idleRemaining,
+            'max_remaining' => $maxRemaining,
+            'expires_in' => 0,
+        ];
+
+        if ($clearExpired) {
+            authClear();
+        }
+
+        return $state;
+    }
+
+    return [
+        'active' => true,
+        'reason' => 'ACTIVE',
+        'server_time' => $now,
+        'user_id' => $userId,
+        'login_time' => $loginTime,
+        'last_activity' => $lastActivity,
+        'idle_remaining' => $idleRemaining,
+        'max_remaining' => $maxRemaining,
+        'expires_in' => min(
+            $idleRemaining,
+            $maxRemaining
+        ),
+    ];
+}
+
+function authHumanDuration(
+    int $seconds
+): string {
+    $seconds = max(
+        1,
+        $seconds
+    );
+
+    if (
+        $seconds >= 3600
+        && $seconds % 3600 === 0
+    ) {
+        $hours =
+            intdiv(
+                $seconds,
+                3600
+            );
+
+        return $hours
+            . ' hour'
+            . ($hours === 1 ? '' : 's');
+    }
+
+    if (
+        $seconds >= 60
+        && $seconds % 60 === 0
+    ) {
+        $minutes =
+            intdiv(
+                $seconds,
+                60
+            );
+
+        return $minutes
+            . ' minute'
+            . ($minutes === 1 ? '' : 's');
+    }
+
+    return $seconds
+        . ' second'
+        . ($seconds === 1 ? '' : 's');
+}
+
+function authSessionReasonMessage(
+    string $reason
+): string {
+    return match ($reason) {
+        'IDLE_TIMEOUT' =>
+            'Your session expired because there was no activity for '
+            . authHumanDuration(
+                SESSION_IDLE_LIMIT
+            )
+            . '.',
+
+        'MAX_SESSION_LIFETIME' =>
+            'Your session reached the maximum allowed duration of '
+            . authHumanDuration(
+                SESSION_MAX_LIFETIME
+            )
+            . '.',
+
+        'SESSION_REVOKED' =>
+            'Your account session is no longer active.',
+
+        default =>
+            'Your session is no longer valid. Please sign in again.',
+    };
+}
+
+function authLoggedIn(): bool
+{
+    $state =
+        authSessionState(false);
+
+    if (
+        $state['active']
+        ?? false
+    ) {
+        return true;
+    }
+
+    /*
+     * Login/index pages may call authLoggedIn().
+     * Never preserve an old timeout marker here.
+     */
+    if (
+        (int) (
+            $state['user_id']
+            ?? 0
+        ) > 0
     ) {
         authClear();
+    }
 
+    return false;
+}
+
+/**
+ * Record real user activity.
+ *
+ * Passive/background API calls must not use this.
+ */
+function authTouchActivity(): bool
+{
+    $state =
+        authSessionState(false);
+
+    if (
+        !($state['active'] ?? false)
+    ) {
         return false;
     }
+
+    $_SESSION['auth_last_activity'] =
+        time();
 
     return true;
 }
@@ -352,21 +586,92 @@ function authRequire(
 ): void {
     authNoCache();
 
-    if (!authLoggedIn()) {
+    $sessionState =
+        authSessionState(false);
+
+    if (
+        !($sessionState['active'] ?? false)
+    ) {
+        $reason = (string) (
+            $sessionState['reason']
+            ?? 'NO_SESSION'
+        );
+
+        $status = match ($reason) {
+            'IDLE_TIMEOUT' =>
+                'SESSION_IDLE_TIMEOUT',
+
+            'MAX_SESSION_LIFETIME' =>
+                'SESSION_MAX_LIFETIME',
+
+            default =>
+                'AUTH_REQUIRED',
+        };
+
+        $message =
+            authSessionReasonMessage(
+                $reason
+            );
+
+        /*
+         * Clear only after we have captured the exact reason.
+         */
+        authClear();
+
         if ($api) {
             http_response_code(401);
-            header('Content-Type: application/json; charset=utf-8');
+            header(
+                'Content-Type: application/json; charset=utf-8'
+            );
 
             echo json_encode([
                 'success' => false,
-                'status' => 'AUTH_REQUIRED',
-                'message' => 'Please log in again.'
+                'status' => $status,
+                'reason' => $reason,
+                'message' => $message,
+                'login_url' =>
+                    authLoginUrl(),
             ]);
 
             exit;
         }
 
-        header('Location: ' . authLoginUrl(), true, 303);
+        /*
+         * Only redirect to the visual timeout page when THIS request
+         * itself proved that a real timeout happened.
+         *
+         * NO_SESSION / INVALID_SESSION go straight to login.
+         * This prevents stale timeout loops after a fresh login.
+         */
+        if (
+            in_array(
+                $reason,
+                [
+                    'IDLE_TIMEOUT',
+                    'MAX_SESSION_LIFETIME',
+                ],
+                true
+            )
+        ) {
+            header(
+                'Location: '
+                . authSessionExpiredUrl(
+                    $reason
+                ),
+                true,
+                303
+            );
+
+            exit;
+        }
+
+        header(
+            'Location: '
+            . authLoginUrl(),
+            true,
+            303
+        );
+
         exit;
     }
 
@@ -392,17 +697,36 @@ function authRequire(
 
         if ($api) {
             http_response_code(401);
-            header('Content-Type: application/json; charset=utf-8');
+            header(
+                'Content-Type: application/json; charset=utf-8'
+            );
 
             echo json_encode([
                 'success' => false,
-                'status' => 'SESSION_REVOKED'
+                'status' =>
+                    'SESSION_REVOKED',
+                'reason' =>
+                    'SESSION_REVOKED',
+                'message' =>
+                    authSessionReasonMessage(
+                        'SESSION_REVOKED'
+                    ),
+                'login_url' =>
+                    authLoginUrl(),
             ]);
 
             exit;
         }
 
-        header('Location: ' . authLoginUrl(), true, 303);
+        header(
+            'Location: '
+            . authSessionExpiredUrl(
+                'SESSION_REVOKED'
+            ),
+            true,
+            303
+        );
+
         exit;
     }
 
@@ -427,7 +751,21 @@ function authRequire(
     }
 
     $_SESSION['auth_role'] = $role;
-    $_SESSION['auth_last_activity'] = time();
+
+    /*
+     * Background ADMIN/SCHEDULER APIs must not extend the idle timer.
+     * Normal HTML navigation counts as activity.
+     * Actual in-page interaction is sent by session-guard.js.
+     *
+     * Preserve existing Teacher behavior for now.
+     */
+    if (
+        !$api
+        || $role === 'TEACHER'
+    ) {
+        $_SESSION['auth_last_activity'] =
+            time();
+    }
 
     /*
      * ADMIN 30-day password rotation.

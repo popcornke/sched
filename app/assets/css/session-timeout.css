@@ -1,0 +1,224 @@
+.bcp-session-timeout {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+}
+
+.bcp-session-timeout[hidden] {
+    display: none !important;
+}
+
+.bcp-session-timeout__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 18, 42, .64);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    animation: bcpSessionFade .2s ease both;
+}
+
+.bcp-session-timeout__dialog {
+    position: relative;
+    z-index: 1;
+    width: min(460px, calc(100vw - 32px));
+    margin: min(18vh, 150px) auto 0;
+    padding: 30px;
+    border: 1px solid rgba(255, 255, 255, .75);
+    border-radius: 22px;
+    background: #fff;
+    color: #172033;
+    box-shadow:
+        0 34px 90px rgba(5, 16, 40, .30),
+        0 8px 28px rgba(5, 16, 40, .14);
+    text-align: center;
+    animation: bcpSessionRise .24s ease both;
+}
+
+.bcp-session-timeout__icon {
+    display: grid;
+    place-items: center;
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 17px;
+    border-radius: 18px;
+    background: #eef3ff;
+    color: #1a3a8c;
+    font-size: 25px;
+}
+
+.bcp-session-timeout__eyebrow {
+    display: block;
+    margin-bottom: 7px;
+    color: #1a3a8c;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .11em;
+}
+
+.bcp-session-timeout__dialog h1,
+.bcp-session-timeout__dialog h2 {
+    margin: 0;
+    color: #172033;
+    font-size: clamp(24px, 5vw, 31px);
+    line-height: 1.15;
+    letter-spacing: -.035em;
+}
+
+.bcp-session-timeout__reason {
+    max-width: 370px;
+    margin: 12px auto 22px;
+    color: #667085;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.bcp-session-timeout__counter {
+    --bcp-session-progress: 1;
+
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 104px;
+    height: 104px;
+    margin: 0 auto 8px;
+    border-radius: 50%;
+    background:
+        conic-gradient(
+            #1a3a8c calc(var(--bcp-session-progress) * 1turn),
+            #edf1f8 0
+        );
+    box-shadow:
+        0 8px 22px rgba(26, 58, 140, .12);
+}
+
+.bcp-session-timeout__counter::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border-radius: 50%;
+    background: #fafcff;
+    box-shadow:
+        inset 0 0 0 1px #e6ebf4;
+}
+
+.bcp-session-timeout__counter strong {
+    position: relative;
+    z-index: 1;
+    color: #1a3a8c;
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.bcp-session-timeout__seconds {
+    display: block;
+    margin-bottom: 21px;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.bcp-session-timeout__login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 46px;
+    padding: 0 19px;
+    border: 0;
+    border-radius: 12px;
+    background: #1a3a8c;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: 0 10px 22px rgba(26, 58, 140, .22);
+    transition:
+        transform .18s ease,
+        background .18s ease,
+        box-shadow .18s ease;
+}
+
+.bcp-session-timeout__login:hover,
+.bcp-session-timeout__login:focus-visible {
+    background: #102d73;
+    box-shadow: 0 13px 28px rgba(26, 58, 140, .29);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.bcp-session-timeout__note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin: 17px 0 0;
+    color: #98a2b3;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+body.bcp-session-locked {
+    overflow: hidden !important;
+}
+
+body.bcp-session-expired-page {
+    min-height: 100vh;
+    margin: 0;
+    background:
+        linear-gradient(
+            135deg,
+            #edf2fb,
+            #f8faff 48%,
+            #eef3ff
+        );
+}
+
+@keyframes bcpSessionFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes bcpSessionRise {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (max-width: 600px) {
+    .bcp-session-timeout__dialog {
+        margin-top: 12vh;
+        padding: 25px 20px;
+        border-radius: 18px;
+    }
+
+    .bcp-session-timeout__counter {
+        width: 92px;
+        height: 92px;
+    }
+
+    .bcp-session-timeout__counter strong {
+        font-size: 37px;
+    }
+
+    .bcp-session-timeout__login {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bcp-session-timeout__backdrop,
+    .bcp-session-timeout__dialog,
+    .bcp-session-timeout__login {
+        animation: none !important;
+        transition: none !important;
+    }
+}

@@ -577,6 +577,78 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
 
 <div class="bcp-toast-stack" id="bcpToastStack" aria-live="polite" aria-atomic="false"></div>
 
+<link rel="stylesheet" href="<?= $APP_ROOT ?>assets/css/session-timeout.css">
+
+<div
+    class="bcp-session-timeout"
+    id="bcpSessionTimeout"
+    aria-hidden="true"
+    hidden
+>
+    <div
+        class="bcp-session-timeout__backdrop"
+        aria-hidden="true"
+    ></div>
+
+    <section
+        class="bcp-session-timeout__dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="bcpSessionTimeoutTitle"
+        aria-describedby="bcpSessionTimeoutReason"
+    >
+        <span
+            class="bcp-session-timeout__icon"
+            aria-hidden="true"
+        >
+            <i class="fa-solid fa-lock"></i>
+        </span>
+
+        <span class="bcp-session-timeout__eyebrow">
+            BCP ACCOUNT SECURITY
+        </span>
+
+        <h2 id="bcpSessionTimeoutTitle">
+            Session Timeout
+        </h2>
+
+        <p
+            class="bcp-session-timeout__reason"
+            id="bcpSessionTimeoutReason"
+        >
+            Your session has expired.
+            Please sign in again to continue.
+        </p>
+
+        <div
+            class="bcp-session-timeout__counter"
+            aria-label="Redirect countdown"
+        >
+            <strong id="bcpSessionTimeoutCountdown">
+                5
+            </strong>
+        </div>
+
+        <span class="bcp-session-timeout__seconds">
+            seconds until login
+        </span>
+
+        <a
+            class="bcp-session-timeout__login"
+            id="bcpSessionTimeoutLogin"
+            href="<?= htmlspecialchars(authLoginUrl(), ENT_QUOTES, 'UTF-8') ?>"
+        >
+            <i class="fa-solid fa-right-to-bracket"></i>
+            Go to Login Now
+        </a>
+
+        <p class="bcp-session-timeout__note">
+            <i class="fa-solid fa-shield-halved"></i>
+            The expired session cannot be resumed.
+        </p>
+    </section>
+</div>
+
 <!-- ============================================================
      SHARED SIDEBAR JAVASCRIPT
      ============================================================ -->
@@ -1196,3 +1268,16 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
         void refresh();
     })();
 </script>
+
+<script>
+    window.BCPSessionGuardConfig = Object.freeze({
+        sessionApi: <?= json_encode($APP_ROOT . 'api/session-status.php', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        loginUrl: <?= json_encode(authLoginUrl(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        csrfToken: <?= json_encode(function_exists('authCsrf') ? authCsrf() : '', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        userId: <?= (int) ($_SESSION['auth_user_id'] ?? 0) ?>,
+        loginTime: <?= (int) ($_SESSION['auth_login_time'] ?? 0) ?>,
+        idleLimitSeconds: <?= defined('SESSION_IDLE_LIMIT') ? (int) SESSION_IDLE_LIMIT : 600 ?>,
+        maxSessionSeconds: <?= defined('SESSION_MAX_LIFETIME') ? (int) SESSION_MAX_LIFETIME : 28800 ?>
+    });
+</script>
+<script src="<?= $APP_ROOT ?>assets/js/session-guard.js"></script>

@@ -625,6 +625,12 @@ function bcpMailerSend(
                 $payload,
 
             /*
+             * Identifies this application to the provider.
+             */
+            CURLOPT_USERAGENT =>
+                'BCP-Scheduling-System/1.0',
+
+            /*
              * Never disable SSL verification.
              */
             CURLOPT_SSL_VERIFYPEER =>

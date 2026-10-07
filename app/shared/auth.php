@@ -105,8 +105,35 @@ function authStart(): void
         return;
     }
 
-    $https = !empty($_SERVER['HTTPS'])
-        && $_SERVER['HTTPS'] !== 'off';
+    /*
+     * Detect HTTPS both directly (localhost / normal Apache)
+     * and behind a trusted reverse proxy such as Railway.
+     *
+     * Railway terminates TLS before forwarding the request to
+     * the PHP container, so HTTPS may be empty while
+     * X-Forwarded-Proto is "https".
+     */
+    $forwardedProto = strtolower(
+        trim(
+            (string) (
+                $_SERVER['HTTP_X_FORWARDED_PROTO']
+                ?? ''
+            )
+        )
+    );
+
+    if (str_contains($forwardedProto, ',')) {
+        $forwardedProto = trim(
+            explode(',', $forwardedProto, 2)[0]
+        );
+    }
+
+    $https =
+        (
+            !empty($_SERVER['HTTPS'])
+            && strtolower((string) $_SERVER['HTTPS']) !== 'off'
+        )
+        || $forwardedProto === 'https';
 
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');

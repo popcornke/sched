@@ -530,13 +530,31 @@ if (
                      *
                      * Maximum 5 OTP records per hour.
                      */
+                    /*
+                     * Keep all database time arithmetic inside MySQL.
+                     *
+                     * Do NOT parse created_at with PHP strtotime().
+                     * Local XAMPP and Railway/MySQL may use different
+                     * time zones, which can turn a 60-second cooldown
+                     * into several hours.
+                     */
                     $rate = $db->prepare(
                         "SELECT
                             COUNT(*) AS sends_last_hour,
 
-                            MAX(
-                                created_at
-                            ) AS latest_created_at
+                            COALESCE(
+                                GREATEST(
+                                    0,
+                                    "
+                                . FP_RESEND_SECONDS .
+                                " - TIMESTAMPDIFF(
+                                    SECOND,
+                                    MAX(created_at),
+                                    NOW()
+                                )
+                            ),
+                            0
+                        ) AS cooldown_remaining
 
                          FROM
                             auth_password_reset_otps
@@ -567,24 +585,16 @@ if (
                     );
 
 
-                    $latestTimestamp = 0;
-
-
-                    if (
-                        !empty($rateRow['latest_created_at'])
-                    ) {
-
-                        $parsed = strtotime(
-                            (string) $rateRow['latest_created_at']
-                        );
-
-
-                        if ($parsed !== false) {
-
-                            $latestTimestamp =
-                                $parsed;
-                        }
-                    }
+                    $cooldownRemaining = max(
+                        0,
+                        min(
+                            FP_RESEND_SECONDS,
+                            (int) (
+                                $rateRow['cooldown_remaining']
+                                ?? 0
+                            )
+                        )
+                    );
 
 
                     /*
@@ -607,27 +617,12 @@ if (
                      * 60-second cooldown.
                      */
                     } elseif (
-                        $latestTimestamp > 0
-                        && (
-                            time()
-                            - $latestTimestamp
-                        ) < FP_RESEND_SECONDS
+                        $cooldownRemaining > 0
                     ) {
-
-                        $remaining = max(
-                            1,
-
-                            FP_RESEND_SECONDS
-                                - (
-                                    time()
-                                    - $latestTimestamp
-                                )
-                        );
-
 
                         $error =
                             'Please wait '
-                            . $remaining
+                            . $cooldownRemaining
                             . ' second(s) before requesting another code.';
 
                         $stage =
@@ -771,21 +766,29 @@ if (
                          */
                         if (!$sent) {
 
-                            $consume =
+                            /*
+                             * A failed transport is NOT a successful
+                             * OTP request. Remove the record so it does
+                             * not create a false cooldown or consume the
+                             * hourly send quota.
+                             */
+                            $deleteOtp =
                                 $db->prepare(
-                                    "UPDATE
+                                    "DELETE FROM
                                         auth_password_reset_otps
-
-                                     SET
-                                        consumed_at = NOW()
 
                                      WHERE otp_id = :otp"
                                 );
 
 
-                            $consume->execute([
+                            $deleteOtp->execute([
                                 'otp' => $otpId
                             ]);
+
+
+                            unset(
+                                $_SESSION['fp_sent_at']
+                            );
 
 
                             $error =
@@ -877,7 +880,9 @@ if (
         if ($userId <= 0) {
 
             $elapsed =
-                time() - $sentAt;
+                $sentAt > 0
+                    ? max(0, time() - $sentAt)
+                    : FP_RESEND_SECONDS;
 
 
             if (
@@ -926,7 +931,9 @@ if (
                  * Session cooldown.
                  */
                 $elapsed =
-                    time() - $sentAt;
+                    $sentAt > 0
+                        ? max(0, time() - $sentAt)
+                        : FP_RESEND_SECONDS;
 
 
                 if (
@@ -1172,17 +1179,28 @@ if (
 
                             if (!$sent) {
 
+                                /*
+                                 * Do not count a transport failure as
+                                 * a successful send. Delete the unsent
+                                 * OTP record and remove the PHP-session
+                                 * cooldown so the user may retry.
+                                 */
                                 $db->prepare(
-                                    "UPDATE
+                                    "DELETE FROM
                                         auth_password_reset_otps
-
-                                     SET
-                                        consumed_at = NOW()
 
                                      WHERE otp_id = :otp"
                                 )->execute([
                                     'otp' => $otpId
                                 ]);
+
+
+                                unset(
+                                    $_SESSION['fp_sent_at']
+                                );
+
+
+                                $_SESSION['fp_otp_id'] = 0;
 
 
                                 $error =
@@ -2040,8 +2058,11 @@ if ($sentAt > 0) {
     );
 } else {
 
-    $resendRemaining =
-        FP_RESEND_SECONDS;
+    /*
+     * No successful email has been sent in this session,
+     * therefore there is no client-side resend cooldown.
+     */
+    $resendRemaining = 0;
 }
 
 ?>

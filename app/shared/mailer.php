@@ -36,6 +36,48 @@ declare(strict_types=1);
 
 /*
  * ============================================================
+ * ENVIRONMENT VALUE
+ * ============================================================
+ *
+ * getenv() is the primary source on Railway and XAMPP SetEnv.
+ * $_ENV / $_SERVER are fallbacks for PHP configurations that
+ * expose environment values through those superglobals.
+ */
+
+function bcpEnv(string $key): string
+{
+    $value = getenv($key);
+
+    if ($value !== false) {
+        $value = trim((string) $value);
+
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    if (isset($_ENV[$key])) {
+        $value = trim((string) $_ENV[$key]);
+
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    if (isset($_SERVER[$key])) {
+        $value = trim((string) $_SERVER[$key]);
+
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    return '';
+}
+
+
+/*
+ * ============================================================
  * HTML ESCAPE
  * ============================================================
  */
@@ -417,7 +459,8 @@ function bcpMailerSend(
     string $recipientEmail,
     string $subject,
     string $html,
-    ?string $idempotencyKey = null
+    ?string $idempotencyKey = null,
+    string $category = 'password_reset'
 ): bool {
 
     /*
@@ -426,17 +469,13 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    $apiKey = trim(
-        (string) getenv(
-            'RESEND_API_KEY'
-        )
+    $apiKey = bcpEnv(
+        'RESEND_API_KEY'
     );
 
 
-    $from = trim(
-        (string) getenv(
-            'RESEND_FROM_EMAIL'
-        )
+    $from = bcpEnv(
+        'RESEND_FROM_EMAIL'
     );
 
 
@@ -521,7 +560,9 @@ function bcpMailerSend(
                             'category',
 
                         'value' =>
-                            'password_reset'
+                            (preg_match('/^[a-z0-9_-]{1,50}$/D', $category) === 1
+                                ? $category
+                                : 'transactional')
                     ]
                 ]
             ],
@@ -623,12 +664,6 @@ function bcpMailerSend(
 
             CURLOPT_POSTFIELDS =>
                 $payload,
-
-            /*
-             * Identifies this application to the provider.
-             */
-            CURLOPT_USERAGENT =>
-                'BCP-Scheduling-System/1.0',
 
             /*
              * Never disable SSL verification.
@@ -793,5 +828,89 @@ function bcpSendPasswordResetOtp(
         $html,
 
         $idempotencyKey
+    );
+}
+
+/*
+ * ============================================================
+ * LOGIN OTP EMAIL TEMPLATE
+ * ============================================================
+ */
+
+function bcpBuildLoginOtpEmail(
+    string $username,
+    string $otp,
+    int $expiryMinutes = 10
+): string {
+
+    $safeUsername = bcpMailEscape($username);
+    $safeOtp = bcpMailEscape($otp);
+    $safeExpiryMinutes = max(1, $expiryMinutes);
+
+    return '
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BCP Login Verification</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#172033;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f6fa;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #e2e7ef;border-radius:16px;overflow:hidden;">
+<tr><td style="background:#173f8f;padding:26px 30px;">
+<div style="color:#cbd8f4;font-size:12px;font-weight:700;letter-spacing:1.2px;">BESTLINK COLLEGE OF THE PHILIPPINES</div>
+<div style="margin-top:7px;color:#ffffff;font-size:20px;font-weight:800;">BCP Scheduling System</div>
+</td></tr>
+<tr><td style="padding:34px 30px;">
+<div style="margin-bottom:10px;color:#315aa8;font-size:11px;font-weight:800;letter-spacing:1px;">LOGIN SECURITY</div>
+<h1 style="margin:0 0 18px;color:#172033;font-size:24px;line-height:1.3;">Sign-in Verification</h1>
+<p style="margin:0 0 14px;color:#46546a;font-size:15px;line-height:1.7;">Hello <strong>' . $safeUsername . '</strong>,</p>
+<p style="margin:0;color:#46546a;font-size:15px;line-height:1.7;">A sign-in attempt was made for your BCP Scheduling System account. Use the one-time verification code below to continue.</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0;">
+<tr><td align="center" style="padding:24px 16px;background:#f0f5ff;border:1px solid #d8e3fb;border-radius:12px;">
+<div style="margin-bottom:11px;color:#67768e;font-size:11px;font-weight:700;letter-spacing:1.1px;">YOUR LOGIN VERIFICATION CODE</div>
+<div style="color:#173f8f;font-size:36px;font-weight:800;line-height:1;letter-spacing:9px;">' . $safeOtp . '</div>
+</td></tr>
+</table>
+<p style="margin:0;color:#637187;font-size:14px;line-height:1.7;">This verification code expires in <strong>' . $safeExpiryMinutes . ' minutes</strong>.</p>
+<p style="margin:10px 0 0;color:#637187;font-size:14px;line-height:1.7;">Never share this OTP with anyone. BCP personnel should never ask you for this verification code.</p>
+<div style="height:1px;margin:27px 0;background:#e6eaf0;"></div>
+<p style="margin:0;color:#7b8798;font-size:13px;line-height:1.7;">If you did not attempt to sign in, you may safely ignore this email and consider changing your password.</p>
+</td></tr>
+<tr><td align="center" style="padding:19px 30px;background:#f8fafc;border-top:1px solid #e6eaf0;color:#8994a5;font-size:12px;line-height:1.6;">Bestlink College of the Philippines<br>Academic Scheduling Platform</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>';
+}
+
+function bcpSendLoginOtp(
+    string $recipientEmail,
+    string $username,
+    string $otp,
+    int $expiryMinutes = 10,
+    ?string $idempotencyKey = null
+): bool {
+
+    if (preg_match('/^\d{6}$/D', $otp) !== 1) {
+        error_log('BCP Mailer: invalid login OTP format.');
+        return false;
+    }
+
+    $html = bcpBuildLoginOtpEmail(
+        $username,
+        $otp,
+        $expiryMinutes
+    );
+
+    return bcpMailerSend(
+        $recipientEmail,
+        'BCP Scheduling System - Login Verification Code',
+        $html,
+        $idempotencyKey,
+        'login_2fa'
     );
 }

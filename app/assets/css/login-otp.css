@@ -1,0 +1,92 @@
+.login-otp-card {
+    max-width: 460px;
+}
+
+.login-otp-icon {
+    width: 54px;
+    height: 54px;
+    margin: 0 0 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: #eef4ff;
+    color: #173f8f;
+    font-size: 22px;
+}
+
+.login-otp-input {
+    text-align: center;
+    letter-spacing: .42em;
+    font-size: 24px !important;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.login-otp-success {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid #b9e2c9;
+    border-radius: 10px;
+    background: #eefaf3;
+    color: #1d6f45;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.login-otp-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 13px;
+}
+
+.login-otp-actions form {
+    margin: 0;
+}
+
+.login-otp-secondary {
+    width: 100%;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid #d7deea;
+    border-radius: 9px;
+    background: #fff;
+    color: #40516b;
+    font-family: "Plus Jakarta Sans", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.login-otp-secondary:hover:not(:disabled) {
+    border-color: #b9c8e7;
+    color: #173f8f;
+    background: #f8faff;
+}
+
+.login-otp-secondary:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.login-otp-note {
+    margin: 16px 0 0;
+    color: #728098;
+    font-size: 11px;
+    line-height: 1.65;
+    text-align: center;
+}
+
+@media (max-width: 520px) {
+    .login-otp-actions {
+        grid-template-columns: 1fr;
+    }
+}

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/app/shared/auth.php';
+require_once __DIR__ . '/app/shared/login-otp.php';
 
 authStart();
 authNoCache();
@@ -181,6 +182,8 @@ if (
                 'SELECT
                     user_id,
                     username,
+                    email,
+                    email_verified_at,
                     password_hash,
                     role,
                     is_active,
@@ -579,72 +582,83 @@ if (
 
 
                     /*
-                     * Prevent session fixation.
-                     */
-                    session_regenerate_id(
-                        true
-                    );
-
-
-                    /*
-                     * Clear any old session information.
-                     */
-                    $_SESSION = [];
-
-
-                    /*
                      * =================================================
-                     * CREATE AUTH SESSION
+                     * SECOND FACTOR: EMAIL OTP
                      * =================================================
+                     *
+                     * Correct username/password does NOT create an
+                     * authenticated session yet. The account must first
+                     * pass email OTP verification.
                      */
-
-                    $_SESSION['auth_user_id'] =
-                        (int) $user['user_id'];
-
-
-                    $_SESSION['auth_username'] =
-                        (string) $user['username'];
-
-
-                    $_SESSION['auth_role'] =
-                        (string) $user['role'];
-
-
-                    $_SESSION['auth_login_time'] =
-                        time();
-
-
-                    $_SESSION['auth_last_activity'] =
-                        time();
-
-
-                    $_SESSION['auth_regenerated_at'] =
-                        time();
-
-
-                    /*
-                     * Fresh CSRF token after login.
-                     */
-                    unset(
-                        $_SESSION['csrf_token']
+                    $email = trim(
+                        (string) (
+                            $user['email']
+                            ?? ''
+                        )
                     );
 
-
-                    authCsrf();
-
-
-                    /*
-                     * Redirect.
-                     */
-                    header(
-                        'Location: '
-                            . $dashboard,
-                        true,
-                        303
-                    );
+                    $emailVerifiedAt =
+                        $user['email_verified_at']
+                        ?? null;
 
 
-                    exit;
+                    if (
+                        !filter_var(
+                            $email,
+                            FILTER_VALIDATE_EMAIL
+                        )
+                        || $emailVerifiedAt === null
+                    ) {
+
+                        $error =
+                            'This account does not have a verified email address. '
+                            . 'Contact the system administrator.';
+
+                    } else {
+
+                        /*
+                         * Rotate the pre-authentication session before
+                         * storing the pending 2FA state.
+                         */
+                        session_regenerate_id(
+                            true
+                        );
+
+                        $_SESSION = [];
+
+                        authCsrf();
+
+
+                        $otpResult =
+                            loginOtpIssue(
+                                $db,
+                                $user
+                            );
+
+
+                        if (
+                            !($otpResult['success'] ?? false)
+                        ) {
+
+                            loginOtpClearPending();
+
+                            $error =
+                                (string) (
+                                    $otpResult['message']
+                                    ?? 'Unable to send the verification code.'
+                                );
+
+                        } else {
+
+                            header(
+                                'Location: verify-login-otp.php',
+                                true,
+                                303
+                            );
+
+                            exit;
+                        }
+                    }
                 }
             }
         } catch (Throwable $e) {

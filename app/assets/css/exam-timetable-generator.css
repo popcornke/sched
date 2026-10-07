@@ -37,7 +37,7 @@ body.bcp-exam-page {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 999; /* FIX: Itinaas ang z-index para hindi matabunan ng modal/content */
     width: 100%;
     box-sizing: border-box;
 }
@@ -283,6 +283,13 @@ body.bcp-exam-page {
     width: 100%;
     max-width: 100%;
     animation: dashSlideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.bcp-exam__panel--transparent {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
 }
 
 .bcp-exam__controls {
@@ -570,6 +577,7 @@ body.bcp-exam-page {
     flex-shrink: 0;
 }
 
+/* BIG NUMBERS (Premium Badass Metrics like Dashboard) */
 .bcp-exam__stats {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -577,33 +585,64 @@ body.bcp-exam-page {
     margin: 20px 0;
     width: 100%;
 }
-
-.bcp-exam__stat-card {
-    padding: 18px 19px;
+.bcp-exam__metric {
+    background: var(--ex-surface, #ffffff);
     border: 1px solid var(--ex-border);
-    border-radius: 17px;
-    background: #fff;
-    box-shadow: 0 7px 22px #29466e05;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(16, 45, 99, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 160px;
     min-width: 0;
+    position: relative;
+    overflow: hidden;
 }
-
-.bcp-exam__stat-card span {
-    display: block;
+/* Subtle background accent for metrics */
+.bcp-exam__metric::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, rgba(26,58,140,0.05) 0%, rgba(26,58,140,0) 100%);
+    border-radius: 0 18px 0 100%;
+}
+.bcp-exam__metric-icon {
+    display: grid;
+    place-items: center;
+    background: #f0f5ff;
+    color: #2554a3;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    font-size: 18px;
+    margin-bottom: 16px;
+    line-height: 1;
+}
+.bcp-exam__metric span {
     font-size: 11px;
+    color: var(--ex-muted);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--ex-muted);
-    margin-bottom: 8px;
 }
-
-.bcp-exam__stat-card strong {
+.bcp-exam__metric strong {
     display: block;
-    font-size: clamp(20px, 2vw, 26px);
-    font-weight: 770;
+    font-size: clamp(26px, 3vw, 36px);
+    letter-spacing: -1px;
+    font-weight: 800;
+    color: #112a54;
     line-height: 1.2;
-    color: #172f58;
-    overflow-wrap: anywhere;
+    margin: 4px 0 6px;
+}
+.bcp-exam__metric small {
+    font-size: 12px;
+    color: #8390a5;
+    font-weight: 500;
+    margin-top: auto;
 }
 
 .bcp-exam__note {
@@ -1013,6 +1052,15 @@ body.bcp-exam-page {
 
     .bcp-exam__stats {
         grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .bcp-exam__metric {
+        min-height: 140px;
+        padding: 18px;
+    }
+    .bcp-exam__metric strong {
+        font-size: 28px;
     }
 
     .bcp-exam__actions {

@@ -39,7 +39,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="../../assets/css/exam-timetable-generator.css">
+  <!-- CACHE BUSTER ADDED -->
+  <link rel="stylesheet" href="../../assets/css/exam-timetable-generator.css?v=<?= time() ?>">
 </head>
 
 <body class="bcp-exam-page">
@@ -119,50 +120,72 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
         </section>
 
         <section id="examReport" hidden>
-          <div class="bcp-exam__panel">
-            <div class="bcp-exam__report-heading">
-              <div>
-                <p class="bcp-exam__eyebrow">BESTLINK COLLEGE OF THE PHILIPPINES · EXAMINATION TIMETABLE</p>
-                <h2 id="reportTitle">Examination Schedule</h2>
-                <p id="reportInfo"></p>
-              </div>
-              <span class="bcp-exam__chip bcp-exam__chip--warning" id="examReportBadge">UNSAVED DEMO PREVIEW</span>
+          <!-- REMOVED WRAPPER PANEL SO BADASS CARDS HAVE SPACE -->
+          <div class="bcp-exam__report-heading" style="background:#fff; padding:24px; border-radius:18px; border:1px solid #e5eaf3; margin-bottom:20px;">
+            <div>
+              <p class="bcp-exam__eyebrow">BESTLINK COLLEGE OF THE PHILIPPINES · EXAMINATION TIMETABLE</p>
+              <h2 id="reportTitle">Examination Schedule</h2>
+              <p id="reportInfo"></p>
             </div>
-
-            <div class="bcp-exam__stats">
-              <div class="bcp-exam__stat-card"><span>Required exams</span><strong id="examRequired">—</strong></div>
-              <div class="bcp-exam__stat-card"><span>Scheduled exams</span><strong id="examAssigned">—</strong></div>
-              <div class="bcp-exam__stat-card"><span>Exam audit issues</span><strong id="examIssues">—</strong></div>
-              <div class="bcp-exam__stat-card"><span>Solver status</span><strong id="examSolver">—</strong></div>
-              <div class="bcp-exam__stat-card" title="Actual Google OR-Tools CP-SAT solver wall time for this generated preview."><span>OR-Tools solve time</span><strong id="examSolveTime">—</strong></div>
-            </div>
-
-            <p class="bcp-exam__note">Day 3 is optional per student. All exams on a student's exam day must be consecutive with no vacant time, including actual Cluster + Major combinations. Cluster and Major are printed as separate official section timetables. DEMO timetable; check approved exam requirements before official use.</p>
-
-            <!-- NEW FILTERS AND SEARCH FOR EXAM LIST -->
-            <div class="bcp-exam__filter-bar">
-              <div class="bcp-exam__filter-actions">
-                <div class="bcp-exam__filter-dropdown">
-                  <select id="examTypeFilter">
-                    <option value="ALL">All Section Types</option>
-                    <option value="REGULAR">Regular</option>
-                    <option value="CLUSTER">Cluster</option>
-                    <option value="MAJOR">Major</option>
-                  </select>
-                </div>
-                <div class="bcp-exam__search">
-                  <i class="fa-solid fa-magnifying-glass"></i>
-                  <input type="search" id="examSearchInput" placeholder="Search section, e.g. 11001" autocomplete="off">
-                </div>
-                <button type="button" id="examExpandAll" class="bcp-exam__btn-tertiary">Expand All</button>
-                <button type="button" id="examCollapseAll" class="bcp-exam__btn-tertiary">Collapse All</button>
-                <button type="button" class="bcp-exam__btn-secondary" id="examPrint" disabled><i class="fa-solid fa-print"></i> Print Official Report</button>
-              </div>
-            </div>
-
-            <div id="examSections" class="bcp-exam__sections"></div>
-
+            <span class="bcp-exam__chip bcp-exam__chip--warning" id="examReportBadge">UNSAVED DEMO PREVIEW</span>
           </div>
+
+          <!-- PREMIUM BADASS CARDS -->
+          <div class="bcp-exam__stats">
+            <article class="bcp-exam__metric">
+              <div class="bcp-exam__metric-icon"><i class="fa-solid fa-layer-group"></i></div>
+              <span>Required Exams</span>
+              <strong id="examRequired">—</strong>
+              <small>Total sections to map</small>
+            </article>
+            <article class="bcp-exam__metric">
+              <div class="bcp-exam__metric-icon"><i class="fa-solid fa-calendar-check"></i></div>
+              <span>Scheduled Exams</span>
+              <strong id="examAssigned">—</strong>
+              <small>Generated mappings</small>
+            </article>
+            <article class="bcp-exam__metric">
+              <div class="bcp-exam__metric-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+              <span>Audit Issues</span>
+              <strong id="examIssues">—</strong>
+              <small>Validation warnings</small>
+            </article>
+            <article class="bcp-exam__metric">
+              <div class="bcp-exam__metric-icon"><i class="fa-solid fa-shield-halved"></i></div>
+              <span>Solver Status</span>
+              <strong id="examSolver">—</strong>
+              <small>OR-Tools result</small>
+            </article>
+            <article class="bcp-exam__metric">
+              <div class="bcp-exam__metric-icon"><i class="fa-solid fa-stopwatch"></i></div>
+              <span>Solve Time</span>
+              <strong id="examSolveTime">—</strong>
+              <small>OR-Tools wall time</small>
+            </article>
+          </div>
+
+          <!-- NEW FILTERS AND SEARCH FOR EXAM LIST -->
+          <div class="bcp-exam__filter-bar">
+            <div class="bcp-exam__filter-actions">
+              <div class="bcp-exam__filter-dropdown">
+                <select id="examTypeFilter">
+                  <option value="ALL">All Section Types</option>
+                  <option value="REGULAR">Regular</option>
+                  <option value="CLUSTER">Cluster</option>
+                  <option value="MAJOR">Major</option>
+                </select>
+              </div>
+              <div class="bcp-exam__search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="examSearchInput" placeholder="Search section, e.g. 11001" autocomplete="off">
+              </div>
+              <button type="button" id="examExpandAll" class="bcp-exam__btn-tertiary">Expand All</button>
+              <button type="button" id="examCollapseAll" class="bcp-exam__btn-tertiary">Collapse All</button>
+              <button type="button" class="bcp-exam__btn-secondary" id="examPrint" disabled><i class="fa-solid fa-print"></i> Print Official Report</button>
+            </div>
+          </div>
+
+          <div id="examSections" class="bcp-exam__sections"></div>
 
           <footer class="bcp-exam__print-footer">
             <span>Prepared by: ________________________________</span>

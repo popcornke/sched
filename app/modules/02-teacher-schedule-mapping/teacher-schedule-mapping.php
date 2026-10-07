@@ -16,8 +16,7 @@ function dashEsc(string $value): string
 
 $role = (string) ($_SESSION['role'] ?? 'Admin');
 $username = trim((string) ($_SESSION['first_name'] ?? 'Admin'));
-$initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));
-$dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
+$initial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));$dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 ?>
 <!doctype html>
 <html lang="en">
@@ -31,13 +30,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   
-  <link rel="stylesheet" href="../../assets/css/teacher-schedule-view.css">
+  <!-- Cache buster added so browser loads the new metric cards immediately -->
+  <link rel="stylesheet" href="../../assets/css/teacher-schedule-view.css?v=<?= time() ?>">
 </head>
 <body class="bcp-teacher-schedule-page">
 
 <?php 
-$APP_ROOT = '../../';
-$ACTIVE_NAV = 'teacher_mapping';
+$APP_ROOT = '../../';$ACTIVE_NAV = 'teacher_mapping';
 require_once __DIR__ . '/../../includes/sidebar.php'; 
 ?>
 
@@ -95,7 +94,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <p id="tmStatus" class="bcp-teacher-map__status" role="status" aria-live="polite">Loading academic periods and faculty…</p>
             </section>
 
-            <section id="tmProfile" class="bcp-teacher-map__panel" hidden>
+            <!-- PROFILE HEADER -->
+            <section id="tmProfile" class="bcp-teacher-map__panel" hidden style="margin-bottom: 24px;">
                 <div class="bcp-teacher-map__profile">
                     <div>
                         <span class="bcp-teacher-map__eyebrow">FACULTY TIMETABLE</span>
@@ -104,9 +104,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </div>
                     <span id="tmBatch" class="bcp-teacher-map__chip"></span>
                 </div>
-                <div id="tmStats" class="bcp-teacher-map__stats"></div>
-                <div id="tmCheck" class="bcp-teacher-map__check" role="status"></div>
+                <div id="tmCheck" class="bcp-teacher-map__check" role="status" style="margin-top: 20px;"></div>
             </section>
+
+            <!-- STATS CARDS -->
+            <section id="tmStats" class="bcp-teacher-map__stats" hidden></section>
 
             <section id="tmResults" hidden>
                 <div class="bcp-teacher-map__panel">
@@ -265,6 +267,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     }
     function resetDetails(message='Choose a professor to view their saved teaching timetable.') {
         $('tmProfile').hidden = true;
+        $('tmStats').hidden = true; 
         $('tmResults').hidden = true;
         $('tmEmpty').hidden = false;
         $('tmEmpty').textContent = message;
@@ -355,12 +358,24 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             `${m.duration_minutes} min`,
         ]));
     }
-    function addStat(label,value) {
-        const card=node('div',undefined,'bcp-teacher-map__stat');
-        card.appendChild(node('span',label));
-        card.appendChild(node('strong',value));
+    
+    // UPDATED FOR DASHBOARD "BADASS" CARDS
+    function addStat(label, value, iconClass, subText) {
+        const card = node('article', undefined, 'bcp-teacher-map__metric');
+        
+        const iconDiv = node('div', undefined, 'bcp-teacher-map__metric-icon');
+        const icon = document.createElement('i');
+        icon.className = `fa-solid ${iconClass}`;
+        iconDiv.appendChild(icon);
+        card.appendChild(iconDiv);
+        
+        card.appendChild(node('span', label));
+        card.appendChild(node('strong', value));
+        card.appendChild(node('small', subText));
+        
         $('tmStats').appendChild(card);
     }
+    
     function renderDaily(items, maxHours) {
         const root=$('tmDaily'); root.replaceChildren();
         items.forEach(day=>{
@@ -382,10 +397,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         $('tmMeta').textContent=`${teacher.employee_no} · ${data.program.program_code} · ${data.period.academic_year}, Semester ${data.period.semester}`;
         $('tmBatch').textContent=data.batch_id ? `ACTIVE DEMO BATCH #${data.batch_id}` : 'NO ACTIVE DEMO TIMETABLE';
         $('tmStats').replaceChildren();
-        addStat('Teaching load',`${summary.weekly_teaching_hours} / ${summary.max_weekly_hours} hrs/week`);
-        addStat('F2F hours',`${summary.f2f_hours} hrs`);
-        addStat('Online hours',`${summary.online_hours} hrs`);
-        addStat('Sections / subject assignments',`${summary.sections} / ${summary.assigned_subject_sections}`);
+        
+        // Premium Badass Metrics - UPDATED SPECIFIC LABEL
+        addStat('Teaching Load', `${summary.weekly_teaching_hours} hrs`, 'fa-clock', `Max allowed: ${summary.max_weekly_hours} hrs/week`);
+        addStat('Face-to-Face', `${summary.f2f_hours} hrs`, 'fa-chalkboard-user', 'Total F2F workload');
+        addStat('Online', `${summary.online_hours} hrs`, 'fa-laptop', 'Total Online workload');
+        addStat('Sections Handled', `${summary.sections}`, 'fa-users-viewfinder', `Across ${summary.assigned_subject_sections} subject(s)`);
         
         const report=$('tmCheck'); report.replaceChildren();
         report.dataset.ok=String(data.mapping_validation.passed);
@@ -409,7 +426,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             a.day_of_week, `${time(a.start_time)} – ${time(a.end_time)}`,a.availability_status,
         ]));
         
-        $('tmProfile').hidden=false; $('tmResults').hidden=false; $('tmEmpty').hidden=true;
+        $('tmProfile').hidden=false; 
+        $('tmStats').hidden=false; 
+        $('tmResults').hidden=false; 
+        $('tmEmpty').hidden=true;
     }
     
     async function loadTeacher() {

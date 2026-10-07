@@ -33,6 +33,8 @@ declare(strict_types=1);
  * ============================================================
  */
 
+// PANG-CONNECT SA TEMPLATES FILE
+require_once __DIR__ . '/email-templates.php';
 
 /*
  * ============================================================
@@ -75,7 +77,6 @@ function bcpEnv(string $key): string
     return '';
 }
 
-
 /*
  * ============================================================
  * HTML ESCAPE
@@ -90,364 +91,6 @@ function bcpMailEscape(string $value): string
         'UTF-8'
     );
 }
-
-
-/*
- * ============================================================
- * PASSWORD RESET OTP EMAIL TEMPLATE
- * ============================================================
- */
-
-function bcpBuildPasswordResetOtpEmail(
-    string $username,
-    string $otp,
-    int $expiryMinutes = 10
-): string {
-
-    $safeUsername = bcpMailEscape(
-        $username
-    );
-
-    $safeOtp = bcpMailEscape(
-        $otp
-    );
-
-    $safeExpiryMinutes = max(
-        1,
-        $expiryMinutes
-    );
-
-
-    return '
-<!doctype html>
-<html lang="en">
-
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
-
-    <title>
-        BCP Password Reset Verification
-    </title>
-
-</head>
-
-
-<body
-    style="
-        margin: 0;
-        padding: 0;
-        background: #f4f6fa;
-        font-family: Arial, Helvetica, sans-serif;
-        color: #172033;
-    "
->
-
-
-<table
-    role="presentation"
-    width="100%"
-    cellspacing="0"
-    cellpadding="0"
-    border="0"
-    style="
-        width: 100%;
-        background: #f4f6fa;
-    "
->
-
-    <tr>
-
-        <td
-            align="center"
-            style="
-                padding: 40px 16px;
-            "
-        >
-
-
-            <table
-                role="presentation"
-                width="560"
-                cellspacing="0"
-                cellpadding="0"
-                border="0"
-                style="
-                    width: 100%;
-                    max-width: 560px;
-                    background: #ffffff;
-                    border: 1px solid #e2e7ef;
-                    border-radius: 16px;
-                    overflow: hidden;
-                "
-            >
-
-
-                <!-- HEADER -->
-                <tr>
-
-                    <td
-                        style="
-                            background: #173f8f;
-                            padding: 26px 30px;
-                        "
-                    >
-
-                        <div
-                            style="
-                                color: #cbd8f4;
-                                font-size: 12px;
-                                font-weight: 700;
-                                letter-spacing: 1.2px;
-                            "
-                        >
-                            BESTLINK COLLEGE OF THE PHILIPPINES
-                        </div>
-
-
-                        <div
-                            style="
-                                margin-top: 7px;
-                                color: #ffffff;
-                                font-size: 20px;
-                                font-weight: 800;
-                            "
-                        >
-                            BCP Scheduling System
-                        </div>
-
-                    </td>
-
-                </tr>
-
-
-                <!-- CONTENT -->
-                <tr>
-
-                    <td
-                        style="
-                            padding: 34px 30px;
-                        "
-                    >
-
-
-                        <div
-                            style="
-                                margin-bottom: 10px;
-                                color: #315aa8;
-                                font-size: 11px;
-                                font-weight: 800;
-                                letter-spacing: 1px;
-                            "
-                        >
-                            ACCOUNT SECURITY
-                        </div>
-
-
-                        <h1
-                            style="
-                                margin: 0 0 18px;
-                                color: #172033;
-                                font-size: 24px;
-                                line-height: 1.3;
-                            "
-                        >
-                            Password Reset Verification
-                        </h1>
-
-
-                        <p
-                            style="
-                                margin: 0 0 14px;
-                                color: #46546a;
-                                font-size: 15px;
-                                line-height: 1.7;
-                            "
-                        >
-                            Hello <strong>'
-                            . $safeUsername .
-                            '</strong>,
-                        </p>
-
-
-                        <p
-                            style="
-                                margin: 0;
-                                color: #46546a;
-                                font-size: 15px;
-                                line-height: 1.7;
-                            "
-                        >
-                            We received a request to reset the password
-                            for your BCP Scheduling System account.
-                            Use the one-time verification code below
-                            to continue.
-                        </p>
-
-
-                        <!-- OTP BOX -->
-                        <table
-                            role="presentation"
-                            width="100%"
-                            cellspacing="0"
-                            cellpadding="0"
-                            border="0"
-                            style="
-                                margin: 28px 0;
-                            "
-                        >
-
-                            <tr>
-
-                                <td
-                                    align="center"
-                                    style="
-                                        padding: 24px 16px;
-                                        background: #f0f5ff;
-                                        border: 1px solid #d8e3fb;
-                                        border-radius: 12px;
-                                    "
-                                >
-
-
-                                    <div
-                                        style="
-                                            margin-bottom: 11px;
-                                            color: #67768e;
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            letter-spacing: 1.1px;
-                                        "
-                                    >
-                                        YOUR ONE-TIME PASSWORD
-                                    </div>
-
-
-                                    <div
-                                        style="
-                                            color: #173f8f;
-                                            font-size: 36px;
-                                            font-weight: 800;
-                                            line-height: 1;
-                                            letter-spacing: 9px;
-                                        "
-                                    >
-                                        '
-                                        . $safeOtp .
-                                        '
-                                    </div>
-
-
-                                </td>
-
-                            </tr>
-
-                        </table>
-
-
-                        <p
-                            style="
-                                margin: 0;
-                                color: #637187;
-                                font-size: 14px;
-                                line-height: 1.7;
-                            "
-                        >
-                            This verification code expires in
-                            <strong>'
-                            . $safeExpiryMinutes .
-                            ' minutes</strong>.
-                        </p>
-
-
-                        <p
-                            style="
-                                margin: 10px 0 0;
-                                color: #637187;
-                                font-size: 14px;
-                                line-height: 1.7;
-                            "
-                        >
-                            Never share this OTP with anyone.
-                            BCP personnel should never ask you
-                            for this verification code.
-                        </p>
-
-
-                        <div
-                            style="
-                                height: 1px;
-                                margin: 27px 0;
-                                background: #e6eaf0;
-                            "
-                        ></div>
-
-
-                        <p
-                            style="
-                                margin: 0;
-                                color: #7b8798;
-                                font-size: 13px;
-                                line-height: 1.7;
-                            "
-                        >
-                            If you did not request this password reset,
-                            you may safely ignore this email.
-                            Your password will remain unchanged.
-                        </p>
-
-
-                    </td>
-
-                </tr>
-
-
-                <!-- FOOTER -->
-                <tr>
-
-                    <td
-                        align="center"
-                        style="
-                            padding: 19px 30px;
-                            background: #f8fafc;
-                            border-top: 1px solid #e6eaf0;
-                            color: #8994a5;
-                            font-size: 12px;
-                            line-height: 1.6;
-                        "
-                    >
-
-                        Bestlink College of the Philippines
-
-                        <br>
-
-                        Academic Scheduling Platform
-
-                    </td>
-
-                </tr>
-
-
-            </table>
-
-
-        </td>
-
-    </tr>
-
-</table>
-
-
-</body>
-
-</html>';
-}
-
 
 /*
  * ============================================================
@@ -486,36 +129,19 @@ function bcpMailerSend(
      */
 
     if ($apiKey === '') {
-
-        error_log(
-            'BCP Mailer: RESEND_API_KEY is missing.'
-        );
-
+        error_log('BCP Mailer: RESEND_API_KEY is missing.');
         return false;
     }
 
 
     if ($from === '') {
-
-        error_log(
-            'BCP Mailer: RESEND_FROM_EMAIL is missing.'
-        );
-
+        error_log('BCP Mailer: RESEND_FROM_EMAIL is missing.');
         return false;
     }
 
 
-    if (
-        !filter_var(
-            $recipientEmail,
-            FILTER_VALIDATE_EMAIL
-        )
-    ) {
-
-        error_log(
-            'BCP Mailer: recipient email is invalid.'
-        );
-
+    if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+        error_log('BCP Mailer: recipient email is invalid.');
         return false;
     }
 
@@ -525,11 +151,7 @@ function bcpMailerSend(
      * includes the cURL extension.
      */
     if (!function_exists('curl_init')) {
-
-        error_log(
-            'BCP Mailer: PHP cURL extension is unavailable.'
-        );
-
+        error_log('BCP Mailer: PHP cURL extension is unavailable.');
         return false;
     }
 
@@ -545,41 +167,20 @@ function bcpMailerSend(
         $payload = json_encode(
             [
                 'from' => $from,
-
-                'to' => [
-                    $recipientEmail
-                ],
-
+                'to' => [$recipientEmail],
                 'subject' => $subject,
-
                 'html' => $html,
-
                 'tags' => [
                     [
-                        'name' =>
-                            'category',
-
-                        'value' =>
-                            (preg_match('/^[a-z0-9_-]{1,50}$/D', $category) === 1
-                                ? $category
-                                : 'transactional')
+                        'name' => 'category',
+                        'value' => (preg_match('/^[a-z0-9_-]{1,50}$/D', $category) === 1 ? $category : 'transactional')
                     ]
                 ]
             ],
-
-            JSON_UNESCAPED_UNICODE
-            | JSON_UNESCAPED_SLASHES
-            | JSON_THROW_ON_ERROR
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
         );
-
-
     } catch (Throwable $e) {
-
-        error_log(
-            'BCP Mailer JSON error: '
-            . $e->getMessage()
-        );
-
+        error_log('BCP Mailer JSON error: ' . $e->getMessage());
         return false;
     }
 
@@ -591,29 +192,13 @@ function bcpMailerSend(
      */
 
     $headers = [
-        'Authorization: Bearer '
-            . $apiKey,
-
+        'Authorization: Bearer ' . $apiKey,
         'Content-Type: application/json',
-
         'Accept: application/json'
     ];
 
-
-    /*
-     * Helps prevent duplicate sends
-     * if the same request is retried.
-     */
-    if (
-        is_string(
-            $idempotencyKey
-        )
-        && $idempotencyKey !== ''
-    ) {
-
-        $headers[] =
-            'Idempotency-Key: '
-            . $idempotencyKey;
+    if (is_string($idempotencyKey) && $idempotencyKey !== '') {
+        $headers[] = 'Idempotency-Key: ' . $idempotencyKey;
     }
 
 
@@ -623,17 +208,10 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    $curl = curl_init(
-        'https://api.resend.com/emails'
-    );
-
+    $curl = curl_init('https://api.resend.com/emails');
 
     if ($curl === false) {
-
-        error_log(
-            'BCP Mailer: curl_init() failed.'
-        );
-
+        error_log('BCP Mailer: curl_init() failed.');
         return false;
     }
 
@@ -644,37 +222,29 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    curl_setopt_array(
-        $curl,
-        [
-            CURLOPT_POST =>
-                true,
+    $curlOptions = [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_POSTFIELDS => $payload,
+        /* Never disable SSL verification in production */
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ];
 
-            CURLOPT_RETURNTRANSFER =>
-                true,
+    /* 
+     * FIX FOR XAMPP/WINDOWS LOCALHOST ONLY:
+     * If curl fails due to SSL cert issue on local XAMPP, this ignores it ONLY if running on localhost. 
+     * Note: Remove this in production if you want strict SSL.
+     */
+    if ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1') {
+        $curlOptions[CURLOPT_SSL_VERIFYPEER] = false;
+        $curlOptions[CURLOPT_SSL_VERIFYHOST] = false;
+    }
 
-            CURLOPT_CONNECTTIMEOUT =>
-                10,
-
-            CURLOPT_TIMEOUT =>
-                20,
-
-            CURLOPT_HTTPHEADER =>
-                $headers,
-
-            CURLOPT_POSTFIELDS =>
-                $payload,
-
-            /*
-             * Never disable SSL verification.
-             */
-            CURLOPT_SSL_VERIFYPEER =>
-                true,
-
-            CURLOPT_SSL_VERIFYHOST =>
-                2,
-        ]
-    );
+    curl_setopt_array($curl, $curlOptions);
 
 
     /*
@@ -683,25 +253,11 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    $response = curl_exec(
-        $curl
-    );
+    $response = curl_exec($curl);
+    $curlError = curl_error($curl);
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
 
-
-    $curlError = curl_error(
-        $curl
-    );
-
-
-    $httpCode = (int) curl_getinfo(
-        $curl,
-        CURLINFO_HTTP_CODE
-    );
-
-
-    curl_close(
-        $curl
-    );
+    curl_close($curl);
 
 
     /*
@@ -710,16 +266,8 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    if (
-        $response === false
-        || $curlError !== ''
-    ) {
-
-        error_log(
-            'BCP Mailer transport error: '
-            . $curlError
-        );
-
+    if ($response === false || $curlError !== '') {
+        error_log('BCP Mailer transport error: ' . $curlError);
         return false;
     }
 
@@ -730,33 +278,12 @@ function bcpMailerSend(
      * --------------------------------------------------------
      */
 
-    if (
-        $httpCode < 200
-        || $httpCode >= 300
-    ) {
-
-        /*
-         * Do not log:
-         *
-         * - RESEND_API_KEY
-         * - OTP
-         * - complete email body
-         */
+    if ($httpCode < 200 || $httpCode >= 300) {
         error_log(
-            'BCP Mailer: Resend returned HTTP '
-            . $httpCode
-            . '. Response: '
-            . substr(
-                (string) $response,
-                0,
-                500
-            )
+            'BCP Mailer: Resend returned HTTP ' . $httpCode . '. Response: ' . substr((string) $response, 0, 500)
         );
-
-
         return false;
     }
-
 
     return true;
 }
@@ -765,19 +292,6 @@ function bcpMailerSend(
 /*
  * ============================================================
  * PASSWORD RESET OTP SENDER
- * ============================================================
- *
- * This is the function forgot-password.php will call.
- *
- * Example:
- *
- * bcpSendPasswordResetOtp(
- *     "admin@example.com",
- *     "admin1",
- *     "123456",
- *     10,
- *     "bcp-reset-1-25"
- * );
  * ============================================================
  */
 
@@ -789,104 +303,26 @@ function bcpSendPasswordResetOtp(
     ?string $idempotencyKey = null
 ): bool {
 
-    /*
-     * OTP must always be exactly six digits.
-     */
-    if (
-        preg_match(
-            '/^\d{6}$/D',
-            $otp
-        ) !== 1
-    ) {
-
-        error_log(
-            'BCP Mailer: invalid OTP format.'
-        );
-
+    if (preg_match('/^\d{6}$/D', $otp) !== 1) {
+        error_log('BCP Mailer: invalid OTP format.');
         return false;
     }
 
+    $html = emailTemplatePasswordResetOtp($username, $otp, $expiryMinutes);
 
-    /*
-     * Build official BCP HTML email.
-     */
-    $html = bcpBuildPasswordResetOtpEmail(
-        $username,
-        $otp,
-        $expiryMinutes
-    );
-
-
-    /*
-     * Send through Resend HTTPS API.
-     */
     return bcpMailerSend(
         $recipientEmail,
-
         'BCP Scheduling System - Password Reset OTP',
-
         $html,
-
         $idempotencyKey
     );
 }
 
 /*
  * ============================================================
- * LOGIN OTP EMAIL TEMPLATE
+ * LOGIN 2FA OTP SENDER
  * ============================================================
  */
-
-function bcpBuildLoginOtpEmail(
-    string $username,
-    string $otp,
-    int $expiryMinutes = 10
-): string {
-
-    $safeUsername = bcpMailEscape($username);
-    $safeOtp = bcpMailEscape($otp);
-    $safeExpiryMinutes = max(1, $expiryMinutes);
-
-    return '
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>BCP Login Verification</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#172033;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f6fa;">
-<tr><td align="center" style="padding:40px 16px;">
-<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #e2e7ef;border-radius:16px;overflow:hidden;">
-<tr><td style="background:#173f8f;padding:26px 30px;">
-<div style="color:#cbd8f4;font-size:12px;font-weight:700;letter-spacing:1.2px;">BESTLINK COLLEGE OF THE PHILIPPINES</div>
-<div style="margin-top:7px;color:#ffffff;font-size:20px;font-weight:800;">BCP Scheduling System</div>
-</td></tr>
-<tr><td style="padding:34px 30px;">
-<div style="margin-bottom:10px;color:#315aa8;font-size:11px;font-weight:800;letter-spacing:1px;">LOGIN SECURITY</div>
-<h1 style="margin:0 0 18px;color:#172033;font-size:24px;line-height:1.3;">Sign-in Verification</h1>
-<p style="margin:0 0 14px;color:#46546a;font-size:15px;line-height:1.7;">Hello <strong>' . $safeUsername . '</strong>,</p>
-<p style="margin:0;color:#46546a;font-size:15px;line-height:1.7;">A sign-in attempt was made for your BCP Scheduling System account. Use the one-time verification code below to continue.</p>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0;">
-<tr><td align="center" style="padding:24px 16px;background:#f0f5ff;border:1px solid #d8e3fb;border-radius:12px;">
-<div style="margin-bottom:11px;color:#67768e;font-size:11px;font-weight:700;letter-spacing:1.1px;">YOUR LOGIN VERIFICATION CODE</div>
-<div style="color:#173f8f;font-size:36px;font-weight:800;line-height:1;letter-spacing:9px;">' . $safeOtp . '</div>
-</td></tr>
-</table>
-<p style="margin:0;color:#637187;font-size:14px;line-height:1.7;">This verification code expires in <strong>' . $safeExpiryMinutes . ' minutes</strong>.</p>
-<p style="margin:10px 0 0;color:#637187;font-size:14px;line-height:1.7;">Never share this OTP with anyone. BCP personnel should never ask you for this verification code.</p>
-<div style="height:1px;margin:27px 0;background:#e6eaf0;"></div>
-<p style="margin:0;color:#7b8798;font-size:13px;line-height:1.7;">If you did not attempt to sign in, you may safely ignore this email and consider changing your password.</p>
-</td></tr>
-<tr><td align="center" style="padding:19px 30px;background:#f8fafc;border-top:1px solid #e6eaf0;color:#8994a5;font-size:12px;line-height:1.6;">Bestlink College of the Philippines<br>Academic Scheduling Platform</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>';
-}
-
 function bcpSendLoginOtp(
     string $recipientEmail,
     string $username,
@@ -900,11 +336,7 @@ function bcpSendLoginOtp(
         return false;
     }
 
-    $html = bcpBuildLoginOtpEmail(
-        $username,
-        $otp,
-        $expiryMinutes
-    );
+    $html = bcpBuildLoginOtpEmail($username, $otp, $expiryMinutes);
 
     return bcpMailerSend(
         $recipientEmail,

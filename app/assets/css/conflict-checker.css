@@ -33,7 +33,7 @@ body.bcp-conflict-page {
     box-shadow: 0 1px 4px rgba(0,0,0,0.08); 
     position: sticky; 
     top: 0; 
-    z-index: 100; 
+    z-index: 999; /* FIX: Itinaas ang z-index para hindi matabunan ng modal/content */
     width: 100%;
     box-sizing: border-box;
 }
@@ -200,11 +200,18 @@ body.bcp-conflict-page {
     background: var(--cc-card);
     border: 1px solid var(--cc-border);
     border-radius: 18px;
-    box-shadow: 0 6px 20px #29466e04;
-    padding: 24px;
+    box-shadow: 0 8px 24px rgba(16, 45, 99, 0.03);
+    padding: 28px;
     width: 100%;
     max-width: 100%;
     animation: dashSlideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.bcp-conflict__panel--transparent {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
 }
 
 .bcp-conflict__toolbar {
@@ -399,39 +406,76 @@ body.bcp-conflict-page {
 .bcp-conflict__status[data-kind=loading] { background: #eff6ff; border-color: #bfdbfe; color: var(--cc-blue); }
 .bcp-conflict__status-icon { font-size: 16px; flex-shrink: 0; }
 
+/* BIG NUMBERS (Premium Badass Metrics like Dashboard) */
 .bcp-conflict__summary {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    gap: 18px;
     width: 100%;
 }
-.bcp-conflict__summary-card {
-    padding: 18px 19px;
+.bcp-conflict__metric {
+    background: var(--cc-surface, #ffffff);
     border: 1px solid var(--cc-border);
-    border-radius: 17px;
-    background: #fff;
-    box-shadow: 0 7px 22px #29466e05;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(16, 45, 99, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 160px;
     min-width: 0;
+    position: relative;
+    overflow: hidden;
 }
-.bcp-conflict__summary span {
-    display: block;
-    font-size: 12px;
+/* Subtle background accent for metrics */
+.bcp-conflict__metric::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, rgba(26,58,140,0.05) 0%, rgba(26,58,140,0) 100%);
+    border-radius: 0 18px 0 100%;
+}
+.bcp-conflict__metric-icon {
+    display: grid;
+    place-items: center;
+    background: #f0f5ff;
+    color: #2554a3;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    font-size: 18px;
+    margin-bottom: 16px;
+    line-height: 1;
+}
+.bcp-conflict__metric span {
+    font-size: 11px;
+    color: var(--cc-muted);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--cc-muted);
-    margin-bottom: 8px;
 }
-.bcp-conflict__summary strong {
+.bcp-conflict__metric strong {
     display: block;
-    font-size: clamp(20px, 2vw, 26px);
-    font-weight: 770;
+    font-size: clamp(18px, 2vw, 26px); /* Pinaliit ang text size (dati ay 36px) */
+    letter-spacing: -0.5px;
+    font-weight: 800;
+    color: #112a54;
     line-height: 1.2;
-    color: #172f58;
-    overflow-wrap: anywhere;
+    margin: 4px 0 6px;
+    overflow-wrap: anywhere; /* Pwersadong puputulin ang text para bumaba sa next line */
+    word-break: break-word;
 }
-.bcp-conflict__summary strong[data-ok=true] { color: #127657; }
-.bcp-conflict__summary strong[data-ok=false] { color: #9f1239; }
+.bcp-conflict__metric small {
+    font-size: 12px;
+    color: #8390a5;
+    font-weight: 500;
+    margin-top: auto;
+}
+.bcp-conflict__metric strong[data-ok=true] { color: #127657; }
+.bcp-conflict__metric strong[data-ok=false] { color: #9f1239; }
 
 .bcp-conflict__muted { color: var(--cc-muted); font-size: 12px; margin: 16px 0 0; line-height: 1.6; }
 
@@ -523,6 +567,8 @@ body.bcp-conflict-page {
     .bcp-conflict__panel { padding: 16px; }
     .bcp-conflict__findingsbar { align-items: stretch; flex-direction: column; }
     .bcp-conflict__summary { grid-template-columns: 1fr; }
+    .bcp-conflict__metric { min-height: 140px; padding: 18px; }
+    .bcp-conflict__metric strong { font-size: 28px; }
     .bcp-conflict__btn-primary { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {

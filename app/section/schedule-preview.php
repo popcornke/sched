@@ -135,27 +135,31 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         hidden></section>
                 </section>
 
-                <!-- SUMMARY -->
+                <!-- SUMMARY METRICS -->
                 <section id="bcpSummary" class="bcp-preview__metrics" aria-label="Schedule Metrics" hidden>
                     <article class="bcp-preview__metric">
                         <div class="bcp-preview__metric-icon"><i class="fa-solid fa-layer-group"></i></div>
                         <span>Sections</span>
                         <strong id="bcpSectionCount">—</strong>
+                        <small>Total active sections</small>
                     </article>
                     <article class="bcp-preview__metric">
                         <div class="bcp-preview__metric-icon"><i class="fa-solid fa-users-viewfinder"></i></div>
-                        <span>Class meetings</span>
+                        <span>Class Meetings</span>
                         <strong id="bcpMeetingCount">—</strong>
+                        <small>Generated time slots</small>
                     </article>
                     <article class="bcp-preview__metric">
                         <div class="bcp-preview__metric-icon"><i class="fa-solid fa-shield-halved"></i></div>
-                        <span>Timetable status</span>
-                        <strong id="bcpAuditStatus" class="bcp-status-badge">—</strong>
+                        <span>Timetable Status</span>
+                        <strong id="bcpAuditStatus">—</strong>
+                        <small id="bcpAuditSub">Validation result</small>
                     </article>
                     <article class="bcp-preview__metric">
                         <div class="bcp-preview__metric-icon"><i class="fa-solid fa-stopwatch"></i></div>
-                        <span>Solving time / batch</span>
+                        <span>Solving Time</span>
                         <strong id="bcpSolveTime">—</strong>
+                        <small id="bcpSolveSub">OR-Tools performance</small>
                     </article>
                 </section>
 
@@ -593,11 +597,13 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 el("bcpPeriodDescription").textContent = p ? `${prog?.program_code || "Select program"} · AY ${p.academic_year} · Semester ${p.semester}` : "Choose a program and academic period.";
             }
 
-            function showSummary(count, meetings, state, reference) {
+            function showSummary(count, meetings, state, reference, stateSub, refSub) {
                 el("bcpSectionCount").textContent = String(count);
                 el("bcpMeetingCount").textContent = String(meetings);
                 el("bcpAuditStatus").textContent = state;
                 el("bcpSolveTime").textContent = reference;
+                if(stateSub) el("bcpAuditSub").textContent = stateSub;
+                if(refSub) el("bcpSolveSub").textContent = refSub;
                 el("bcpSummary").hidden = false;
             }
 
@@ -935,7 +941,9 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         originalAssignments = saved.assignments;
                         const replacementAvailable = selectedProgram.program_code === "BSIT" && saved.batch.data_origin === "DEMO" && selectedPeriod()?.period_status === "DEMO";
                         regenerateButton.hidden = !replacementAvailable;
-                        showSummary(saved.sections, saved.saved_meetings, "SAVED · DEMO", `Batch #${saved.batch.batch_id}`);
+                        
+                        showSummary(saved.sections, saved.saved_meetings, "SAVED", `Batch #${saved.batch.batch_id}`, "Timetable is active", "Read-only view");
+                        
                         el("bcpActionDescription").textContent = replacementAvailable ? "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch." : "Saved timetable is shown in read-only mode.";
                         el("bcpProgramNote").textContent = `ACTIVE batch #${saved.batch.batch_id} · ${saved.saved_meetings} stored meetings · read-only view.`;
                         setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
@@ -1090,7 +1098,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
                     clearResourceDiagnosis();
                     showAssignments(result.assignments);
-                    showSummary(result.sections, `${result.returned_meetings} / ${result.required_meetings}`, "AUDIT_PASSED", `${Number(result.solve_seconds).toFixed(1)}s`);
+                    showSummary(result.sections, `${result.returned_meetings} / ${result.required_meetings}`, "PASSED", `${Number(result.solve_seconds).toFixed(1)}s`, "Unsaved preview", "OR-Tools time");
+                    
                     if (result.save_ready_demo === true && typeof result.save_token === "string") {
                         saveToken = result.save_token;
                         saveButton.hidden = false;
@@ -1169,7 +1178,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     if (replacement.status !== "DEMO_PREVIEW_GENERATED") throw new Error("Replacement failed.");
                     replaceToken = replacement.replace_token;
                     showAssignments(replacement.assignments);
-                    showSummary(replacement.sections, replacement.returned_meetings, "REPLACEMENT PREVIEW · NOT SAVED", `${Number(replacement.solve_seconds).toFixed(1)}s`);
+                    showSummary(replacement.sections, replacement.returned_meetings, "PREVIEW", `${Number(replacement.solve_seconds).toFixed(1)}s`, "Unsaved replacement", "OR-Tools time");
 
                     const minute = value => {
                         const [h, m] = String(value).split(":").map(Number);
@@ -1248,7 +1257,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 return [...printModal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => !item.hidden && item.offsetParent !== null);
             }
 
-            // OFFICIAL PRINT PREVIEW GENERATION
             function buildPrintRows(rows) {
                 const subjects = new Map();
                 for (const r of rows) {
@@ -1268,7 +1276,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 let html = '';
                 let index = 1;
 
-                // SORT BY CHRONOLOGICAL DAY & TIME FOR PRINTING
                 const sorted = [...subjects.values()].sort((a, b) => {
                     const dayA = a.f2f ? a.f2f.day_of_week : (a.online ? a.online.day_of_week : "");
                     const timeA = a.f2f ? a.f2f.start_time : (a.online ? a.online.start_time : "24:00:00");
@@ -1307,11 +1314,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 return html;
             }
 
-            function openPrintModal() {
-                if (!assignments || assignments.length === 0) {
-                    setStatus("No timetable data available to print.", "info");
-                    return;
-                }
+            function buildPrintDoc() {
+                if (!assignments || assignments.length === 0) return false;
                 const printContent = el("bcpPrintContent");
                 printContent.innerHTML = "";
 
@@ -1325,11 +1329,9 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     const yLvl = r.year_level || String(code).charAt(0);
                     const sType = r.section_type || "REGULAR";
 
-                    // Apply filters again for print format
                     if (yf !== "ALL" && String(yLvl) !== yf) continue;
                     if (tf !== "ALL" && String(sType).toUpperCase() !== String(tf).toUpperCase()) continue;
-
-                    // Search matching
+                    
                     const subjCode = String(r.subject_code || '').toLowerCase();
                     const subjTitle = String(r.subject_title || '').toLowerCase();
                     const matchesQuery = !q || code.toLowerCase().includes(q) || subjCode.includes(q) || subjTitle.includes(q);
@@ -1340,11 +1342,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     groups.get(code).push(r);
                 }
 
-                if (groups.size === 0) {
-                    setStatus("No matching sections to print.", "info");
-                    searchInput.focus();
-                    return;
-                }
+                if (groups.size === 0) return false;
 
                 const p = selectedPeriod();
                 const ay = p ? p.academic_year : "—";
@@ -1405,7 +1403,15 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     `;
                     printContent.appendChild(sectionWrapper);
                 }
+                return true;
+            }
 
+            function openPrintModal() {
+                if (!buildPrintDoc()) {
+                    setStatus("No matching sections to print.", "info");
+                    searchInput.focus();
+                    return;
+                }
                 lastFocusedBeforeModal = document.activeElement;
                 printModal.hidden = false;
                 document.body.classList.add("bcp-modal-open");
@@ -1418,6 +1424,10 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 document.body.classList.remove("bcp-modal-open");
                 if (lastFocusedBeforeModal instanceof HTMLElement) lastFocusedBeforeModal.focus();
             }
+
+            window.addEventListener('beforeprint', () => {
+                buildPrintDoc();
+            });
 
             printTrigger?.addEventListener("click", openPrintModal);
             el("bcpPrintCloseBtn")?.addEventListener("click", closePrintModal);

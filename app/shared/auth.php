@@ -50,19 +50,31 @@ function authBasePath(): string
     );
 }
 
-
 function authLoginUrl(): string
 {
     return authBasePath() . '/index.php';
 }
 
-
 function authLogoutUrl(): string
 {
     return authBasePath() . '/logout.php';
 }
-const SESSION_IDLE_LIMIT = 600;    // 10 minutes
-const SESSION_MAX_LIFETIME = 28800; // 8 hours
+
+function authAccountUrl(): string
+{
+    return authBasePath() . '/app/auth/account.php';
+}
+
+const SESSION_IDLE_LIMIT = 600;      // 10 minutes
+const SESSION_MAX_LIFETIME = 28800;  // 8 hours
+
+/*
+ * Admin password rotation:
+ * - warning begins at 7 days remaining
+ * - password becomes mandatory to change after 30 days
+ */
+const ADMIN_PASSWORD_MAX_AGE_DAYS = 30;
+const ADMIN_PASSWORD_WARNING_DAYS = 7;
 
 function authDb(): PDO
 {
@@ -105,14 +117,6 @@ function authStart(): void
         return;
     }
 
-    /*
-     * Detect HTTPS both directly (localhost / normal Apache)
-     * and behind a trusted reverse proxy such as Railway.
-     *
-     * Railway terminates TLS before forwarding the request to
-     * the PHP container, so HTTPS may be empty while
-     * X-Forwarded-Proto is "https".
-     */
     $forwardedProto = strtolower(
         trim(
             (string) (
@@ -221,10 +225,10 @@ function authLoggedIn(): bool
     );
 
     if (
-        $lastActivity <= 0 ||
-        $loginTime <= 0 ||
-        ($now - $lastActivity) > SESSION_IDLE_LIMIT ||
-        ($now - $loginTime) > SESSION_MAX_LIFETIME
+        $lastActivity <= 0
+        || $loginTime <= 0
+        || ($now - $lastActivity) > SESSION_IDLE_LIMIT
+        || ($now - $loginTime) > SESSION_MAX_LIFETIME
     ) {
         authClear();
 
@@ -234,9 +238,117 @@ function authLoggedIn(): bool
     return true;
 }
 
+/**
+ * Return the ADMIN password-rotation state.
+ *
+ * This deliberately uses database time for the 30-day calculation
+ * so Railway/local PHP timezone differences do not alter expiration.
+ */
+function authAdminPasswordState(
+    PDO $db,
+    int $userId
+): array {
+    $stmt = $db->prepare(
+        'SELECT
+            password_changed_at,
+            CASE
+                WHEN password_changed_at IS NULL THEN 1
+                WHEN DATE_ADD(
+                    password_changed_at,
+                    INTERVAL 30 DAY
+                ) <= NOW() THEN 1
+                ELSE 0
+            END AS password_expired,
+            CASE
+                WHEN password_changed_at IS NULL THEN 0
+                ELSE GREATEST(
+                    0,
+                    TIMESTAMPDIFF(
+                        SECOND,
+                        NOW(),
+                        DATE_ADD(
+                            password_changed_at,
+                            INTERVAL 30 DAY
+                        )
+                    )
+                )
+            END AS seconds_remaining
+         FROM auth_users
+         WHERE user_id = :user_id
+           AND role = "ADMIN"
+         LIMIT 1'
+    );
+
+    $stmt->execute([
+        'user_id' => $userId
+    ]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return [
+            'applies' => false,
+            'expired' => false,
+            'warning' => false,
+            'days_remaining' => null,
+            'seconds_remaining' => null,
+            'password_changed_at' => null,
+            'password_expires_at' => null,
+        ];
+    }
+
+    $seconds = max(
+        0,
+        (int) ($row['seconds_remaining'] ?? 0)
+    );
+
+    $expired =
+        (int) ($row['password_expired'] ?? 1) === 1;
+
+    $daysRemaining = $expired
+        ? 0
+        : (int) ceil($seconds / 86400);
+
+    $changedAt = $row['password_changed_at'];
+
+    return [
+        'applies' => true,
+        'expired' => $expired,
+        'warning' =>
+            !$expired
+            && $daysRemaining <= ADMIN_PASSWORD_WARNING_DAYS,
+        'days_remaining' => $daysRemaining,
+        'seconds_remaining' => $seconds,
+        'password_changed_at' => $changedAt,
+        'password_expires_at' =>
+            $changedAt === null
+                ? null
+                : date(
+                    'Y-m-d H:i:s',
+                    strtotime(
+                        (string) $changedAt
+                        . ' +'
+                        . ADMIN_PASSWORD_MAX_AGE_DAYS
+                        . ' days'
+                    )
+                ),
+    ];
+}
+
+/**
+ * Central access gate.
+ *
+ * $allowExpiredAdminPassword must ONLY be true for:
+ * - the Admin Account Settings page
+ * - its API
+ *
+ * This lets an expired admin change the password while every
+ * other protected admin page remains blocked.
+ */
 function authRequire(
     bool $api = false,
-    array $allowedRoles = ['ADMIN', 'SCHEDULER']
+    array $allowedRoles = ['ADMIN', 'SCHEDULER'],
+    bool $allowExpiredAdminPassword = false
 ): void {
     authNoCache();
 
@@ -258,9 +370,12 @@ function authRequire(
         exit;
     }
 
-    // Check whether the account is still active.
-    $stmt = authDb()->prepare(
-        'SELECT role, is_active
+    $db = authDb();
+
+    $stmt = $db->prepare(
+        'SELECT
+            role,
+            is_active
          FROM auth_users
          WHERE user_id = :id
          LIMIT 1'
@@ -270,7 +385,7 @@ function authRequire(
         'id' => (int) $_SESSION['auth_user_id']
     ]);
 
-    $user = $stmt->fetch();
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$user || (int) $user['is_active'] !== 1) {
         authClear();
@@ -291,15 +406,120 @@ function authRequire(
         exit;
     }
 
-    if (!in_array($user['role'], $allowedRoles, true)) {
+    $role = (string) $user['role'];
+
+    if (!in_array($role, $allowedRoles, true)) {
+        if ($api) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+
+            echo json_encode([
+                'success' => false,
+                'status' => 'ACCESS_DENIED',
+                'message' => 'Access denied.'
+            ]);
+
+            exit;
+        }
+
         http_response_code(403);
         exit('Access denied.');
     }
 
-    $_SESSION['auth_role'] = $user['role'];
+    $_SESSION['auth_role'] = $role;
     $_SESSION['auth_last_activity'] = time();
 
-    // Periodic session ID regeneration.
+    /*
+     * ADMIN 30-day password rotation.
+     *
+     * SCHEDULER and TEACHER accounts are not changed by this rule.
+     * Teacher password state continues to use teacher_accounts.
+     */
+    if ($role === 'ADMIN') {
+        try {
+            $passwordState = authAdminPasswordState(
+                $db,
+                (int) $_SESSION['auth_user_id']
+            );
+        } catch (Throwable $e) {
+            error_log(
+                'BCP admin password-state error: '
+                . $e->getMessage()
+            );
+
+            if ($api) {
+                http_response_code(503);
+                header(
+                    'Content-Type: application/json; charset=utf-8'
+                );
+
+                echo json_encode([
+                    'success' => false,
+                    'status' =>
+                        'ACCOUNT_SECURITY_NOT_READY',
+                    'message' =>
+                        'Admin account security migration is required.'
+                ]);
+
+                exit;
+            }
+
+            http_response_code(503);
+            exit(
+                'Admin account security is not ready. '
+                . 'Run migration 018_admin_account_security.sql.'
+            );
+        }
+
+        $_SESSION['auth_password_expired'] =
+            $passwordState['expired'] ? 1 : 0;
+
+        $_SESSION['auth_password_warning'] =
+            $passwordState['warning'] ? 1 : 0;
+
+        $_SESSION['auth_password_days_remaining'] =
+            $passwordState['days_remaining'];
+
+        if (
+            $passwordState['expired']
+            && !$allowExpiredAdminPassword
+        ) {
+            if ($api) {
+                http_response_code(428);
+                header(
+                    'Content-Type: application/json; charset=utf-8'
+                );
+
+                echo json_encode([
+                    'success' => false,
+                    'status' =>
+                        'PASSWORD_CHANGE_REQUIRED',
+                    'message' =>
+                        'Your administrator password has expired.',
+                    'account_url' => authAccountUrl()
+                ]);
+
+                exit;
+            }
+
+            header(
+                'Location: '
+                . authAccountUrl()
+                . '?required=1',
+                true,
+                303
+            );
+
+            exit;
+        }
+    } else {
+        unset(
+            $_SESSION['auth_password_expired'],
+            $_SESSION['auth_password_warning'],
+            $_SESSION['auth_password_days_remaining']
+        );
+    }
+
     if (
         time() - (int) (
             $_SESSION['auth_regenerated_at'] ?? 0

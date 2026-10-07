@@ -207,8 +207,10 @@ $ACTIVE_NAV = 'dashboard';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-
     <link rel="stylesheet" href="../assets/css/dashboard.css">
+
+    <!-- Chart.js CDN for Badass Visuals -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body class="bcp-dashboard-page">
@@ -253,8 +255,9 @@ $ACTIVE_NAV = 'dashboard';
                     <span>Figures below refer to the selected scope, not a live conflict audit.</span>
                 </div>
                 <form method="get" class="bcp-dash__filters" id="dashFilters">
-                    <label>Academic period
-                        <select name="period" onchange="this.form.requestSubmit()" aria-label="Academic period">
+                    <div class="bcp-dash__filter-group">
+                        <label for="periodSelect">Academic period</label>
+                        <select name="period" id="periodSelect" aria-label="Academic period">
                             <?php foreach ($periods as $p): ?>
                                 <option value="<?= (int) $p['academic_period_id'] ?>" <?= $selectedPeriod !== null && (int) $p['academic_period_id'] === (int) $selectedPeriod['academic_period_id'] ? 'selected' : '' ?>>
                                     <?= dashEsc($p['academic_year'] . ' · Sem ' . $p['semester'] . ' · ' . $p['period_status']) ?>
@@ -262,16 +265,19 @@ $ACTIVE_NAV = 'dashboard';
                             <?php endforeach; ?>
                             <?php if ($periods === []): ?><option value="">No period available</option><?php endif; ?>
                         </select>
-                    </label>
-                    <label>Program
-                        <select name="program" onchange="this.form.requestSubmit()" aria-label="Program">
+                    </div>
+
+                    <div class="bcp-dash__filter-group">
+                        <label for="programSelect">Program</label>
+                        <select name="program" id="programSelect" aria-label="Program">
                             <option value="0" <?= $selectedProgram === null ? 'selected' : '' ?>>All college programs</option>
                             <?php foreach ($programs as $p): ?>
                                 <option value="<?= (int) $p['program_id'] ?>" <?= $selectedProgram !== null && (int) $p['program_id'] === (int) $selectedProgram['program_id'] ? 'selected' : '' ?>><?= dashEsc($p['program_code']) ?></option>
                             <?php endforeach; ?>
                         </select>
-                    </label>
-                    <noscript><button type="submit">Apply filters</button></noscript>
+                    </div>
+
+                    <noscript><button type="submit" class="bcp-dash__filter-submit">Apply filters</button></noscript>
                 </form>
             </section>
 
@@ -280,39 +286,73 @@ $ACTIVE_NAV = 'dashboard';
             <?php elseif ($selectedPeriod === null || $stats === null): ?>
                 <div class="bcp-dash__alert" role="status">No academic period is configured yet. Add the period through the existing authorized workflow first.</div>
             <?php else: ?>
+
+                <!-- TOP METRICS (THE BADASS NUMBERS) -->
+                <section class="bcp-dash__metrics" aria-label="Top Level Statistics">
+                    <article class="bcp-dash__metric">
+                        <div class="bcp-dash__metric-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+                        <span>Total Students</span>
+                        <strong><?= number_format($stats['students']) ?></strong>
+                        <small>Enrolled in selected period</small>
+                    </article>
+                    <article class="bcp-dash__metric">
+                        <div class="bcp-dash__metric-icon"><i class="fa-solid fa-layer-group"></i></div>
+                        <span>Active Sections</span>
+                        <strong><?= number_format($stats['sections']) ?></strong>
+                        <small><?= number_format($stats['offerings']) ?> section-subject offerings</small>
+                    </article>
+                    <article class="bcp-dash__metric">
+                        <div class="bcp-dash__metric-icon"><i class="fa-solid fa-door-open"></i></div>
+                        <span>Available Rooms</span>
+                        <strong><?= number_format($stats['rooms']) ?></strong>
+                        <small>Ready for class/exam usage</small>
+                    </article>
+                    <article class="bcp-dash__metric">
+                        <div class="bcp-dash__metric-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
+                        <span>Active Faculty</span>
+                        <strong><?= number_format($stats['faculty']) ?></strong>
+                        <small>Eligible for assignments</small>
+                    </article>
+                </section>
+
+                <!-- VISUAL ANALYTICS (CHARTS) -->
+                <section class="bcp-dash__charts" aria-label="Visual Analytics">
+                    <article class="bcp-dash__chart-card">
+                        <div class="bcp-dash__chart-header">
+                            <h3>Student Population by Program</h3>
+                        </div>
+                        <div class="bcp-dash__chart-container">
+                            <canvas id="programChart"></canvas>
+                        </div>
+                    </article>
+                    <article class="bcp-dash__chart-card">
+                        <div class="bcp-dash__chart-header">
+                            <h3>Resource Allocation Overview</h3>
+                        </div>
+                        <div class="bcp-dash__chart-container">
+                            <canvas id="resourceChart"></canvas>
+                        </div>
+                    </article>
+                </section>
+
                 <section class="bcp-dash__hero" aria-label="Current scheduling status">
                     <div>
                         <div class="bcp-dash__hero-tag"><?= dashEsc($selectedPeriod['period_status']) ?> PERIOD · <?= dashEsc($activeProgramCode) ?></div>
-                        <h2><?= $stats['class_batches'] > 0 ? 'Saved timetable available' : 'Ready to review scheduling inputs?' ?></h2>
+                        <h2><?= $stats['class_batches'] > 0 ? 'Timetable generation active' : 'Ready to build schedules?' ?></h2>
                         <p><?= $stats['class_batches'] > 0
-                                ? 'There are ACTIVE saved class batches in this view. Use Conflict Checker for the actual audit result before making further scheduling decisions.'
-                                : 'There is no ACTIVE saved class batch in this view. Open the generator and validate section, subject, faculty, room, and time-slot inputs before generating.' ?></p>
+                                ? 'You have ACTIVE class batches. Proceed to Conflict Checker for full validation before finalizing any exam schedules.'
+                                : 'No ACTIVE class batch found. Use the generator to automate section, subject, faculty, and room time slots.' ?></p>
                         <div class="bcp-dash__hero-actions">
                             <a class="bcp-dash__primary" href="<?= dashEsc($links['generate']) ?>"><?= $stats['class_batches'] > 0 ? 'Open class timetable' : 'Generate class schedule' ?> <span aria-hidden="true">↗</span></a>
                             <a class="bcp-dash__secondary" href="<?= dashEsc($links['conflicts']) ?>">Run conflict check</a>
                         </div>
                     </div>
                     <div class="bcp-dash__hero-aside">
-                        <span class="bcp-dash__hero-small">SAVED WORKFLOW</span>
+                        <span class="bcp-dash__hero-small">SAVED WORKFLOW STATUS</span>
                         <div><span class="bcp-dash__step <?= $stats['class_batches'] > 0 ? 'is-done' : '' ?>">01</span><span>Class timetable</span><strong><?= $stats['class_batches'] > 0 ? 'ACTIVE saved' : 'Not saved' ?></strong></div>
                         <div><span class="bcp-dash__step">02</span><span>Conflict checker</span><strong>Run audit ↗</strong></div>
                         <div><span class="bcp-dash__step <?= $stats['exam_batches'] > 0 ? 'is-done' : '' ?>">03</span><span>Exam timetable</span><strong><?= $stats['exam_batches'] > 0 ? 'ACTIVE saved' : 'Not saved' ?></strong></div>
                     </div>
-                </section>
-
-                <section class="bcp-dash__metrics" aria-label="Live statistics">
-                    <article class="bcp-dash__metric">
-                        <div class="bcp-dash__metric-icon">▦</div><span>Active sections</span><strong><?= number_format($stats['sections']) ?></strong><small><?= number_format($stats['offerings']) ?> section-subject offerings</small>
-                    </article>
-                    <article class="bcp-dash__metric">
-                        <div class="bcp-dash__metric-icon">♙</div><span>Enrolled records</span><strong><?= number_format($stats['students']) ?></strong><small>Student records in selected period</small>
-                    </article>
-                    <article class="bcp-dash__metric">
-                        <div class="bcp-dash__metric-icon">◷</div><span>Saved class meetings</span><strong><?= number_format($stats['class_meetings']) ?></strong><small><?= number_format($stats['class_batches']) ?> ACTIVE timetable batch(es)</small>
-                    </article>
-                    <article class="bcp-dash__metric">
-                        <div class="bcp-dash__metric-icon">▤</div><span>Saved exam meetings</span><strong><?= number_format($stats['exam_meetings']) ?></strong><small><?= number_format($stats['exam_batches']) ?> ACTIVE exam batch(es)</small>
-                    </article>
                 </section>
 
                 <div class="bcp-dash__columns">
@@ -351,14 +391,13 @@ $ACTIVE_NAV = 'dashboard';
                     <aside class="bcp-dash__aside" aria-label="Resources and shortcuts">
                         <section class="bcp-dash__panel">
                             <div class="bcp-dash__panel-heading">
-                                <div><span class="bcp-dash__label">RESOURCES</span>
-                                    <h2>Scheduling capacity</h2>
+                                <div><span class="bcp-dash__label">SAVED SCHEDULES</span>
+                                    <h2>Database Records</h2>
                                 </div>
                             </div>
-                            <div class="bcp-dash__resource"><span>Active faculty records</span><strong><?= number_format($stats['faculty']) ?></strong></div>
-                            <div class="bcp-dash__resource"><span>Available-status rooms</span><strong><?= number_format($stats['rooms']) ?></strong></div>
-                            <p class="bcp-dash__hint">Room count is based on status only; check a specific date and time for actual availability.</p>
-                            <a class="bcp-dash__inline-link" href="<?= dashEsc($links['rooms']) ?>">Check room availability ↗</a>
+                            <div class="bcp-dash__resource"><span>Class meetings</span><strong><?= number_format($stats['class_meetings']) ?></strong></div>
+                            <div class="bcp-dash__resource"><span>Exam meetings</span><strong><?= number_format($stats['exam_meetings']) ?></strong></div>
+                            <p class="bcp-dash__hint">Reflects meetings associated with ACTIVE batches only.</p>
                         </section>
                         <section class="bcp-dash__panel">
                             <div class="bcp-dash__panel-heading">
@@ -366,7 +405,7 @@ $ACTIVE_NAV = 'dashboard';
                                     <h2>Open a tool</h2>
                                 </div>
                             </div>
-                            <div class="bcp-dash__quick"><a href="<?= dashEsc($links['faculty']) ?>">Faculty mapping <span>↗</span></a><a href="<?= dashEsc($links['calendar']) ?>">Academic calendar <span>↗</span></a><a href="<?= dashEsc($links['time']) ?>">Time block inventory <span>↗</span></a></div>
+                            <div class="bcp-dash__quick"><a href="<?= dashEsc($links['faculty']) ?>">Faculty mapping <span><i class="fa-solid fa-arrow-right"></i></span></a><a href="<?= dashEsc($links['calendar']) ?>">Academic calendar <span><i class="fa-solid fa-arrow-right"></i></span></a><a href="<?= dashEsc($links['time']) ?>">Time block inventory <span><i class="fa-solid fa-arrow-right"></i></span></a></div>
                             <p class="bcp-dash__hint">Special Class Scheduler and Schedule Cloning remain on hold pending required policies or target-period data.</p>
                         </section>
                     </aside>
@@ -424,6 +463,204 @@ $ACTIVE_NAV = 'dashboard';
                     sidebar.classList.toggle('collapsed');
                 });
             }
+
+            /* --- PREMIUM CUSTOM SELECT DROPDOWN LOGIC --- */
+            function upgradeSelects() {
+                document.querySelectorAll('.bcp-dash__filters select').forEach(selectElem => {
+                    if (selectElem.parentElement.classList.contains('bcp-custom-select-initialized')) return;
+
+                    selectElem.style.display = 'none';
+
+                    const wrapper = document.createElement("div");
+                    wrapper.className = "bcp-custom-select-wrapper bcp-custom-select-initialized";
+                    selectElem.parentNode.insertBefore(wrapper, selectElem);
+                    wrapper.appendChild(selectElem);
+
+                    const trigger = document.createElement("div");
+                    trigger.className = "bcp-custom-select-trigger";
+
+                    const triggerText = document.createElement("span");
+                    triggerText.className = "bcp-custom-select-text";
+
+                    const arrow = document.createElement("i");
+                    arrow.className = "fa-solid fa-chevron-down bcp-custom-select-arrow";
+                    trigger.append(triggerText, arrow);
+
+                    const optionsList = document.createElement("div");
+                    optionsList.className = "bcp-custom-select-options";
+                    wrapper.append(trigger, optionsList);
+
+                    function sync() {
+                        optionsList.innerHTML = '';
+                        wrapper.classList.toggle('is-disabled', selectElem.disabled);
+
+                        if (selectElem.options.length === 0) {
+                            triggerText.textContent = "Loading...";
+                            return;
+                        }
+
+                        let selectedLabel = "";
+                        Array.from(selectElem.options).forEach(opt => {
+                            if (opt.selected) selectedLabel = opt.text;
+                            const item = document.createElement("div");
+                            item.className = "bcp-custom-select-option";
+                            item.textContent = opt.text;
+                            if (opt.selected) item.classList.add('is-selected');
+
+                            item.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                if (selectElem.value !== opt.value) {
+                                    selectElem.value = opt.value;
+
+                                    // Trigger form submission manually since it's hidden
+                                    if (selectElem.form) {
+                                        selectElem.form.requestSubmit();
+                                    }
+                                }
+                                closeAllCustomSelects();
+                            });
+                            optionsList.appendChild(item);
+                        });
+                        triggerText.textContent = selectedLabel || "Select an option";
+                    }
+
+                    const observer = new MutationObserver(sync);
+                    observer.observe(selectElem, {
+                        childList: true,
+                        attributes: true,
+                        attributeFilter: ['disabled']
+                    });
+                    selectElem.addEventListener('change', sync);
+
+                    trigger.addEventListener('click', (e) => {
+                        if (selectElem.disabled) return;
+                        e.stopPropagation();
+                        const isOpen = optionsList.classList.contains('is-open');
+                        closeAllCustomSelects();
+                        if (!isOpen) {
+                            optionsList.classList.add('is-open');
+                            trigger.classList.add('is-active');
+                            const selected = optionsList.querySelector('.is-selected');
+                            if (selected) optionsList.scrollTop = selected.offsetTop - 10;
+                        }
+                    });
+                    sync();
+                });
+            }
+
+            function closeAllCustomSelects() {
+                document.querySelectorAll('.bcp-custom-select-options').forEach(elem => elem.classList.remove('is-open'));
+                document.querySelectorAll('.bcp-custom-select-trigger').forEach(elem => elem.classList.remove('is-active'));
+            }
+            document.addEventListener('click', closeAllCustomSelects);
+
+            // Initialize Custom Selects
+            upgradeSelects();
+            /* ------------------------------------------- */
+
+            <?php if (!$loadError && $stats !== null && !empty($programOverview)): ?>
+                // Parse PHP Data securely for Charts
+                const programLabels = <?= json_encode(array_column($programOverview, 'program_code')) ?>;
+                const programData = <?= json_encode(array_column($programOverview, 'students_total')) ?>;
+
+                const statsLabels = ['Sections', 'Rooms', 'Faculty'];
+                const statsData = [<?= $stats['sections'] ?>, <?= $stats['rooms'] ?>, <?= $stats['faculty'] ?>];
+
+                // 1. Doughnut Chart: Student Population by Program
+                const ctxProgram = document.getElementById('programChart').getContext('2d');
+                new Chart(ctxProgram, {
+                    type: 'doughnut',
+                    data: {
+                        labels: programLabels,
+                        datasets: [{
+                            data: programData,
+                            backgroundColor: [
+                                '#1a3a8c', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'
+                            ],
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    boxWidth: 12,
+                                    font: {
+                                        family: 'Plus Jakarta Sans',
+                                        size: 12
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: '#102d63',
+                                titleFont: {
+                                    family: 'Plus Jakarta Sans'
+                                },
+                                bodyFont: {
+                                    family: 'Plus Jakarta Sans'
+                                },
+                                padding: 12,
+                                cornerRadius: 8
+                            }
+                        },
+                        cutout: '65%'
+                    }
+                });
+
+                // 2. Bar Chart: Resource Allocation
+                const ctxResource = document.getElementById('resourceChart').getContext('2d');
+                new Chart(ctxResource, {
+                    type: 'bar',
+                    data: {
+                        labels: statsLabels,
+                        datasets: [{
+                            label: 'Total Count',
+                            data: statsData,
+                            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
+                            borderRadius: 6,
+                            barPercentage: 0.6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: '#102d63',
+                                titleFont: {
+                                    family: 'Plus Jakarta Sans'
+                                },
+                                bodyFont: {
+                                    family: 'Plus Jakarta Sans'
+                                },
+                                padding: 12,
+                                cornerRadius: 8
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    borderDash: [4, 4],
+                                    drawBorder: false
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            <?php endif; ?>
         });
     </script>
 </body>

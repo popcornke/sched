@@ -8,6 +8,16 @@ require_once __DIR__ . '/app/shared/login-otp.php';
 authStart();
 authNoCache();
 
+/*
+ * Security headers limited to the admin login page.
+ * They do not interfere with its existing external fonts or inline styles.
+ */
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+
 
 $dashboard = 'app/dashboard/dashboard.php';
 
@@ -88,7 +98,7 @@ $isLockedUi = false;
 
 $lockSecondsRemaining = 0;
 
-$submittedUsername = '';
+/* Never render a previously submitted username back into the login form. */
 
 
 /*
@@ -109,9 +119,6 @@ if (
         )
     );
 
-
-    $submittedUsername =
-        $username;
 
 
     $password = (string) (
@@ -613,7 +620,6 @@ if (
                         $error =
                             'This account does not have a verified email address. '
                             . 'Contact the system administrator.';
-
                     } else {
 
                         /*
@@ -647,7 +653,6 @@ if (
                                     $otpResult['message']
                                     ?? 'Unable to send the verification code.'
                                 );
-
                         } else {
 
                             header(
@@ -764,6 +769,17 @@ function loginEscape(
         - forgot password link
     -->
     <style>
+        .login-clipboard-notice {
+            margin: 8px 0 12px;
+            color: #85510f;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .login-clipboard-notice[hidden] {
+            display: none;
+        }
+
         .login-security-status {
             margin: 0 0 16px;
             padding: 13px 14px;
@@ -1293,7 +1309,7 @@ function loginEscape(
                 <form
                     method="POST"
                     action=""
-                    autocomplete="on"
+                    autocomplete="off"
                     id="loginForm"
                     class="<?= $isLockedUi
                                 ? 'login-form-locked'
@@ -1325,11 +1341,11 @@ function loginEscape(
                             id="username"
                             name="username"
                             placeholder="Enter your username"
-                            autocomplete="username"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
                             maxlength="80"
-                            value="<?= loginEscape(
-                                        $submittedUsername
-                                    ) ?>"
                             <?= $isLockedUi
                                 ? 'disabled'
                                 : '' ?>
@@ -1360,7 +1376,10 @@ function loginEscape(
                                 id="password"
                                 name="password"
                                 placeholder="Enter your password"
-                                autocomplete="current-password"
+                                autocomplete="off"
+                                autocapitalize="none"
+                                autocorrect="off"
+                                spellcheck="false"
                                 maxlength="1024"
                                 <?= $isLockedUi
                                     ? 'disabled'
@@ -1391,6 +1410,16 @@ function loginEscape(
 
                     </div>
 
+
+                    <!-- Feedback when a clipboard action is blocked on credentials. -->
+                    <p
+                        id="loginClipboardNotice"
+                        class="login-clipboard-notice"
+                        role="status"
+                        aria-live="polite"
+                        hidden>
+                        Please type your login credentials. Copy, cut, paste, and drag-and-drop are disabled in these fields.
+                    </p>
 
                     <!-- FORGOT PASSWORD -->
 
@@ -1568,6 +1597,95 @@ function loginEscape(
 
             }
 
+
+            /*
+             * ========================================================
+             * LOGIN CREDENTIALS: NO AUTOFILL / CLIPBOARD INPUT
+             * ========================================================
+             * Best-effort browser controls only. Browsers or extensions
+             * may choose to ignore autocomplete=off; do not treat this
+             * as a replacement for server-side authentication security.
+             */
+
+            const loginForm = document.getElementById('loginForm');
+            const username = document.getElementById('username');
+            const clipboardNotice = document.getElementById('loginClipboardNotice');
+            const protectedFields = [username, password].filter(Boolean);
+            let noticeHideTimer = null;
+
+            const showClipboardNotice = () => {
+                if (!clipboardNotice) return;
+                clipboardNotice.hidden = false;
+                if (noticeHideTimer !== null) {
+                    window.clearTimeout(noticeHideTimer);
+                }
+                noticeHideTimer = window.setTimeout(() => {
+                    clipboardNotice.hidden = true;
+                    noticeHideTimer = null;
+                }, 3500);
+            };
+
+            const blockClipboardAction = (event) => {
+                event.preventDefault();
+                showClipboardNotice();
+            };
+
+            // Change to false to re-enable paste/copy for password managers.
+            const BLOCK_CREDENTIAL_CLIPBOARD = true;
+
+            if (BLOCK_CREDENTIAL_CLIPBOARD) protectedFields.forEach((field) => {
+                ['copy', 'cut', 'paste', 'drop', 'dragstart', 'contextmenu']
+                .forEach((eventName) => {
+                    field.addEventListener(eventName, blockClipboardAction);
+                });
+
+                // Catch paste or drag/drop input on browsers that expose it
+                // through beforeinput rather than a separate paste event.
+                field.addEventListener('beforeinput', (event) => {
+                    if (['insertFromPaste', 'insertFromPasteAsQuotation',
+                            'insertFromDrop', 'deleteByCut'
+                        ].includes(event.inputType)) {
+                        blockClipboardAction(event);
+                    }
+                });
+
+                // Include legacy clipboard shortcuts (Insert/Delete variants).
+                field.addEventListener('keydown', (event) => {
+                    const key = String(event.key).toLowerCase();
+                    const modifier = event.ctrlKey || event.metaKey;
+                    const standardShortcut = modifier && ['c', 'v', 'x'].includes(key);
+                    const legacyShortcut =
+                        (event.ctrlKey && key === 'insert') ||
+                        (event.shiftKey && key === 'insert') ||
+                        (event.shiftKey && key === 'delete');
+                    if (standardShortcut || legacyShortcut) {
+                        blockClipboardAction(event);
+                    }
+                });
+            });
+
+            // Do not re-display credentials restored from browser history.
+            // Form submission remains untouched: PHP still receives the data.
+            const clearCredentialFields = () => {
+                if (username) username.value = '';
+                if (password) {
+                    password.value = '';
+                    password.type = 'password';
+                }
+                if (toggleIcon) {
+                    toggleIcon.className = 'fa-regular fa-eye';
+                    toggleIcon.style.color = '';
+                }
+                if (togglePassword) {
+                    togglePassword.setAttribute('aria-label', 'Show password');
+                }
+                if (clipboardNotice) clipboardNotice.hidden = true;
+            };
+
+            if (loginForm) {
+                window.addEventListener('pageshow', clearCredentialFields);
+                window.addEventListener('pagehide', clearCredentialFields);
+            }
 
             /*
              * ========================================================

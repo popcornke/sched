@@ -1131,18 +1131,9 @@ def _build_candidates(
                 f"Meeting {mid} has no valid delivery days under the current section policy"
             )
 
-        if stage == "FULL":
-            day_options = sorted(
-                allowed,
-                key=DAYS.index,
-            )
-
-        else:
-            day_options = (
-                [day]
-                if day in allowed
-                else []
-            )
+# Weekday is protected in every repair stage.
+# Repair may adjust teacher, room, or time only.
+day_options = [day] if day in allowed else []
 
         if not day_options:
             raise ValueError(

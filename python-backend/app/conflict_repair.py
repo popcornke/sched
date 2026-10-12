@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -1131,9 +1131,9 @@ def _build_candidates(
                 f"Meeting {mid} has no valid delivery days under the current section policy"
             )
 
-# Weekday is protected in every repair stage.
-# Repair may adjust teacher, room, or time only.
-day_options = [day] if day in allowed else []
+        # Weekday is protected in every repair stage.
+        # Repair may adjust teacher, room, or time only.
+        day_options = [day] if day in allowed else []
 
         if not day_options:
             raise ValueError(

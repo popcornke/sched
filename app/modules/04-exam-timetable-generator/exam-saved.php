@@ -3,7 +3,8 @@ declare(strict_types=1);
 /** Read-only ACTIVE DEMO exam timetable for the selected program. Does not rerun the solver. */
 require_once __DIR__ . '/exam-common.php';
 try {
-    exGuard('GET');
+    authRequire(true, ['ADMIN', 'SCHEDULER', 'STAFF']);
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') exFail(405, 'METHOD_NOT_ALLOWED', 'GET only.');
     $periodId=filter_var($_GET['period_id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
     if (!$periodId) exFail(400,'PERIOD_REQUIRED','Choose an academic period.');
     $programCode=strtoupper(trim((string)($_GET['program']??'BSIT')));

@@ -7,10 +7,14 @@ that proctor may handle another section later when exam-duty times do not overla
 """
 from collections import defaultdict
 from datetime import date
+import re
 from ortools.sat.python import cp_model
 from app.exam_gap_audit import audit_zero_exam_gaps
 
 DAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')
+# Four fixed three-hour shifts; EACH SUBJECT takes one hour inside its shift.
+EXAM_SHIFTS = ((6, 9), (9, 12), (12, 15), (15, 18))
+EXAM_HOURS = tuple(hour for start, end in EXAM_SHIFTS for hour in range(start, end))
 
 
 def minutes(clock):
@@ -70,9 +74,9 @@ def solve_exam(data):
         if any(x.weekday() >= 6 for x in days):
             return reject('INVALID_DATES', 'Sunday exams are not enabled in this DEMO.')
         hour_start, hour_end = int(data['start_hour']), int(data['end_hour'])
-        if (hour_start, hour_end) not in ((6, 21), (18, 21)):
-            return reject('INVALID_EXAM_WINDOW', 'Select 06:00–21:00 or 18:00–21:00.')
-        slots_per_day = hour_end - hour_start
+        if (hour_start, hour_end) != (6, 18):
+            return reject('INVALID_EXAM_WINDOW', 'Exam shifts are fixed from 06:00 to 18:00.')
+        slots_per_day = len(EXAM_HOURS)
         sections = {int(r['section_id']): r for r in data['sections']}
         rooms = {int(r['room_id']): r for r in data['rooms']}
         teachers = {int(r['teacher_id']): r for r in data['teachers']}
@@ -188,10 +192,10 @@ def solve_exam(data):
 
             for day_idx, actual_date in enumerate(days):
                 weekday = actual_date.strftime('%A')
-                for hour in range(hour_start, hour_end):
+                for hour_idx, hour in enumerate(EXAM_HOURS):
                     start_min, end_min = 60 * hour, 60 * (hour + 1)
-                    if ((start_min, start_min + 30) not in db_slots[weekday]
-                            or (start_min + 30, end_min) not in db_slots[weekday]):
+                    if any((minute, minute + 30) not in db_slots[weekday]
+                           for minute in range(start_min, end_min, 30)):
                         continue
 
                     if saved_same_subject_blocked(int(sec['year_level']), int(e['subject_id']), actual_date, start_min, end_min):
@@ -221,15 +225,15 @@ def solve_exam(data):
                                 continue
                             if saved_exam_blocked('room_id', room_id, actual_date, start_min, end_min):
                                 continue
-                            slot = day_idx * slots_per_day + hour - hour_start
+                            slot = day_idx * slots_per_day + hour_idx
                             eligible.append((slot, room_id, teacher_id))
 
             if not eligible:
                 return reject(
                     'NO_ELIGIBLE_EXAM_SLOT',
-                    f"No available one-hour exam slot, room, and same-program section proctor "
+                    f"No available one-hour exam slot within the four official shifts, room, and same-program section proctor "
                     f"for {e['subject_code']} / section {sec['section_code']}. "
-                    'Choose other dates, widen the exam window, or review proctor availability.'
+                    'Choose other dates or review room and proctor availability for the selected hour.'
                 )
 
             allowed_starts = sorted(set(slot for slot, _, _ in eligible))
@@ -276,6 +280,119 @@ def solve_exam(data):
         # exact same physical room. The solver may choose the room, but once
         # chosen it becomes the section's locked exam room.
         # ==============================================================
+        # HARD RULE: each official section keeps its selected three-hour
+        # exam shift across every exam date.  Only the subjects may change.
+        # Starts are encoded as (day * 12 + local hour), where each shift
+        # contains exactly three consecutive one-hour starts.
+        section_shift_anchor = {}
+        allowed_shift_hours = [(slot, shift)
+                               for slot in range(3 * slots_per_day)
+                               for shift in range(4)
+                               if ((slot % slots_per_day) // 3) == shift]
+        for row in entries:
+            sid = int(row['exam']['section_id'])
+            if sid not in section_shift_anchor:
+                section_shift_anchor[sid] = model.NewIntVar(0, 3, f'section_{sid}_fixed_shift')
+            model.AddAllowedAssignments(
+                [row['start'], section_shift_anchor[sid]], allowed_shift_hours)
+
+        # A shift is a capacity bucket, not a requirement to fabricate sections.
+        # This generator is program-scoped: other programs' sections are not
+        # silently included in the 30-section target.
+        shift_memberships = defaultdict(list)
+        for sid, shift in section_shift_anchor.items():
+            for shift_id in range(4):
+                member = model.NewBoolVar(f'section_{sid}_in_shift_{shift_id}')
+                model.Add(shift == shift_id).OnlyEnforceIf(member)
+                model.Add(shift != shift_id).OnlyEnforceIf(member.Not())
+                shift_memberships[shift_id].append(member)
+        for members in shift_memberships.values():
+            model.Add(sum(members) <= 30)
+
+        # HARD DEPLOYMENT ORDER: no higher-year section may be assigned an
+        # earlier shift than a lower-year section. Thus fourth year cannot
+        # appear in shift 1 while first year is still assigned shift 2.
+        # Sections of different years CAN share a shift if resources permit.
+        deployment_years = defaultdict(list)
+        for sid, shift_var in section_shift_anchor.items():
+            deployment_years[int(sections[sid]['year_level'])].append(shift_var)
+        sorted_deployment_years = sorted(deployment_years)
+        for earlier_year, later_year in zip(sorted_deployment_years, sorted_deployment_years[1:]):
+            # Group min/max reduces the number of cross-year constraints.
+            earlier_max = model.NewIntVar(0, 3, f'year_{earlier_year}_last_shift')
+            later_min = model.NewIntVar(0, 3, f'year_{later_year}_first_shift')
+            model.AddMaxEquality(earlier_max, deployment_years[earlier_year])
+            model.AddMinEquality(later_min, deployment_years[later_year])
+            model.Add(earlier_max <= later_min)
+
+        # SAME-YEAR SUBJECT ROTATION — only regular official sections.
+        # Year 1 (9 exams): 3+3+3, Year 2 (8): 3+3+2,
+        # Year 3 (6): 3+3+0. Fourth-year policy remains untouched.
+        # Group trios by matching subject IDs, not by section number alone.
+        year_sections = defaultdict(set)
+        section_subject_rows = defaultdict(dict)
+        for row in entries:
+            sid = int(row['exam']['section_id'])
+            year_sections[int(row['section']['year_level'])].add(sid)
+            section_subject_rows[sid][int(row['exam']['subject_id'])] = row
+        for year, ids in year_sections.items():
+            if year not in (1, 2, 3):
+                continue
+            expected = {1: 9, 2: 8, 3: 6}[year]
+            same_roster = defaultdict(list)
+            for sid in ids:
+                subjects = tuple(sorted(section_subject_rows[sid]))
+                if len(subjects) == expected:
+                    same_roster[subjects].append(sid)
+            for subjects, candidates in same_roster.items():
+                candidates.sort(key=lambda sid: (str(sections[sid]['section_code']), sid))
+                for offset in range(0, len(candidates) - 2, 3):
+                    trio = candidates[offset:offset + 3]
+                    if len(trio) != 3:
+                        continue
+                    # A Year-2 trio must share the same Day-3 subject pair.
+                    # Prefer SOSLIT + PE3 when both are on the actual official
+                    # roster; otherwise choose one deterministic common pair.
+                    # Do not hard-code these subjects into other programs.
+                    if year == 2:
+                        subject_codes = {
+                            subject_id: str(section_subject_rows[trio[0]][subject_id]['exam'].get('subject_code') or '').upper()
+                            for subject_id in subjects
+                        }
+                        preferred = [subject_id for code in ('SOSLIT', 'PE3')
+                                     for subject_id in subjects if subject_codes[subject_id] == code]
+                        day3_pair = tuple(preferred) if len(preferred) == 2 else tuple(subjects[-2:])
+                        # Three sections and two papers cannot all occupy one
+                        # 3-hour shift under the existing strict same-subject
+                        # no-overlap rule: the third section must use another
+                        # shift, otherwise the A/B/A rotation repeats paper A
+                        # simultaneously. Preserve paper security rather than
+                        # disabling the hard conflict constraint.
+                        model.Add(section_shift_anchor[trio[2]] != section_shift_anchor[trio[0]])
+                        scheduled_day12 = tuple(s for s in subjects if s not in day3_pair)
+                    else:
+                        scheduled_day12 = subjects
+                        for sid in trio[1:]:
+                            model.Add(section_shift_anchor[sid] == section_shift_anchor[trio[0]])
+                    for day in range(3 if year == 1 else 2):
+                        selected = scheduled_day12[day * 3:day * 3 + 3]
+                        for section_index, sid in enumerate(trio):
+                            for hour_index in range(3):
+                                subject_id = selected[(hour_index + section_index) % 3]
+                                row = section_subject_rows[sid][subject_id]
+                                model.Add(row['start'] == day * slots_per_day
+                                          + section_shift_anchor[sid] * 3 + hour_index)
+                    if year == 2:
+                        # 2nd year Day 3: A/B, B/A, A/B, using the SAME pair.
+                        # All two exams are consecutive, beginning with the
+                        # first hour of the section's own fixed shift.
+                        for section_index, sid in enumerate(trio):
+                            for hour_index in range(2):
+                                subject_id = day3_pair[(hour_index + section_index) % 2]
+                                row = section_subject_rows[sid][subject_id]
+                                model.Add(row['start'] == 2 * slots_per_day
+                                          + section_shift_anchor[sid] * 3 + hour_index)
+
         section_room_anchor = {}
         for row in entries:
             sid = int(row['exam']['section_id'])
@@ -283,6 +400,46 @@ def solve_exam(data):
                 section_room_anchor[sid] = row['room']
             else:
                 model.Add(row['room'] == section_room_anchor[sid])
+
+        # ROOM CLUSTERING (SOFT): keep sections in the same year level in
+        # neighboring numbered classrooms for fast examination-paper rotation.
+        # The assignment is still decided by OR-Tools, never the staff display.
+        # Model the actual numeric room names (BSIT 201, 202, ... 301) rather
+        # than arbitrary database IDs, which do not express room proximity.
+        # A floor change costs roughly 100 room-number units.
+        room_position = {}
+        for room_id, room in rooms.items():
+            name = str(room.get('room_name') or '')
+            match = re.search(r'(\d{3,4})\s*$', name)
+            room_position[room_id] = int(match.group(1)) if match else 10000 + int(room_id)
+
+        section_position = {}
+        position_choices = sorted(set(room_position.values()))
+        for sid, room_var in section_room_anchor.items():
+            position = model.NewIntVarFromDomain(
+                cp_model.Domain.FromValues(position_choices), f'section_{sid}_room_position')
+            model.AddAllowedAssignments(
+                [room_var, position], [(rid, pos) for rid, pos in room_position.items()])
+            section_position[sid] = position
+
+        # Minimize the physical span occupied by each year level.  This is a
+        # preference, NOT a hard restriction: capacity, real availability,
+        # conflicts, student memberships and same-subject paper-rotation win.
+        year_positions = defaultdict(list)
+        for sid, position in section_position.items():
+            year_positions[int(sections[sid]['year_level'])].append(position)
+        clustering_spans = []
+        low_pos, high_pos = min(position_choices), max(position_choices)
+        for year, positions in year_positions.items():
+            if len(positions) < 2:
+                continue
+            lowest = model.NewIntVar(low_pos, high_pos, f'year_{year}_min_room')
+            highest = model.NewIntVar(low_pos, high_pos, f'year_{year}_max_room')
+            span = model.NewIntVar(0, high_pos - low_pos, f'year_{year}_room_span')
+            model.AddMinEquality(lowest, positions)
+            model.AddMaxEquality(highest, positions)
+            model.Add(span == highest - lowest)
+            clustering_spans.append(span)
 
         # BCP paper-rotation policy:
         # - the same subject within the same year level must alternate between sections;
@@ -439,6 +596,17 @@ def solve_exam(data):
                 model.AddMaxEquality(latest, last_candidates)
                 # HARD RULE: every occupied exam hour must be consecutive.
                 model.Add(latest - earliest == count_var).OnlyEnforceIf(used)
+                # All exams on this day for a section/student group must fit
+                # INSIDE ONE of the official three-hour shifts.
+                first_shift = model.NewIntVar(0, 3, f'g{group_number}_d{d}_first_shift')
+                last_shift = model.NewIntVar(0, 3, f'g{group_number}_d{d}_last_shift')
+                first_local = model.NewIntVar(0, slots_per_day - 1, f'g{group_number}_d{d}_first_local')
+                last_local = model.NewIntVar(0, slots_per_day - 1, f'g{group_number}_d{d}_last_local')
+                model.Add(first_local == earliest - day_start).OnlyEnforceIf(used)
+                model.Add(last_local == latest - 1 - day_start).OnlyEnforceIf(used)
+                model.AddDivisionEquality(first_shift, first_local, 3)
+                model.AddDivisionEquality(last_shift, last_local, 3)
+                model.Add(first_shift == last_shift).OnlyEnforceIf(used)
 
             # Actual fourth-year Cluster + Major students have the BCP-specific
             # 3+1 pattern: three Cluster exams on Day 2, one Major on Day 3.
@@ -453,7 +621,15 @@ def solve_exam(data):
             if special_fourth:
                 model.AddAllowedAssignments(count_vars, [(0, 3, 1)])
             else:
-                patterns = allowed_day_patterns(len(group_entries))
+                # Fixed distributions for normal BSIT Year 2 and Year 3.
+                # Keep the actual linked Fourth Year student policy intact.
+                member_years = {int(sec['year_level']) for sec in group_sections}
+                if program_code == 'BSIT' and member_years == {2} and len(group_entries) == 8:
+                    patterns = [(3, 3, 2)]
+                elif program_code == 'BSIT' and member_years == {3} and len(group_entries) == 6:
+                    patterns = [(3, 3, 0)]
+                else:
+                    patterns = allowed_day_patterns(len(group_entries))
                 if not patterns:
                     return reject('INVALID_EXAM_DAY_DISTRIBUTION',
                                   f'No BCP day-distribution policy is defined for {len(group_entries)} exams.')
@@ -465,8 +641,49 @@ def solve_exam(data):
 
         # Hard day distributions already minimize unnecessary attendance days.
         # Secondary preference: use earlier available hours where all hard rules allow.
+        # Minimize year-level room spread first, then the existing compact-day
+        # and early-hour preferences. Room proximity never overrides hard rules.
         day_weight = len(entries) * (3 * slots_per_day - 1) + 1
-        model.Minimize(day_weight * sum(objectives) + sum(row['start'] for row in entries))
+        proximity_weight = day_weight * (len(objectives) + 1) + len(entries) * (3 * slots_per_day)
+        # First-year sections get the strongest early-shift preference, then
+        # second, third and fourth year. This is a SOFT priority: never break
+        # hard availability, fixed-shift, paper-rotation or room rules.
+        year_order = sorted({int(sec['year_level']) for sec in sections.values()})
+        priority_cost = sum(
+            (len(year_order) - year_order.index(int(sections[sid]['year_level'])))
+            * section_shift_anchor[sid] for sid in section_shift_anchor
+        )
+        # Make the early-shift preference decisive over room proximity while
+        # retaining the latter to cluster same-year sections physically.
+        priority_weight = (proximity_weight * (len(clustering_spans) *
+                           (max(room_position.values()) - min(room_position.values()) + 1) + 1)
+                           + day_weight * len(objectives) + len(entries) * 36 + 1)
+        # Among feasible clustered layouts, prefer the LOWEST numbered
+        # eligible classrooms (201, 202, 203...) rather than an arbitrary
+        # equally compact cluster such as 303, 304, 305. Each section is
+        # counted once; a section's room remains fixed on all three days.
+        # Higher priority: hard year order, hard conflicts, then proximity.
+        ranked_rooms = sorted(room_position, key=lambda rid: (room_position[rid], rid))
+        room_rank = {rid: rank for rank, rid in enumerate(ranked_rooms)}
+        ranked_section_rooms = []
+        for sid, assigned_room in section_room_anchor.items():
+            rank_var = model.NewIntVar(0, len(ranked_rooms) - 1,
+                                       f'section_{sid}_room_rank')
+            model.AddAllowedAssignments(
+                [assigned_room, rank_var], list(room_rank.items()))
+            ranked_section_rooms.append(rank_var)
+        room_floor_cost = sum(ranked_section_rooms)
+        # The lower-numbered-room preference beats day-time aesthetics,
+        # but cannot beat year-room proximity or any hard constraint.
+        room_floor_weight = day_weight * len(objectives) + len(entries) * 36 + 1
+        proximity_weight = room_floor_weight * (len(section_room_anchor) * len(ranked_rooms) + 1)
+        priority_weight = proximity_weight * (len(clustering_spans) *
+                           (max(room_position.values()) - min(room_position.values()) + 1) + 1)
+        model.Minimize(priority_weight * priority_cost
+                       + proximity_weight * sum(clustering_spans)
+                       + room_floor_weight * room_floor_cost
+                       + day_weight * sum(objectives)
+                       + sum(row['start'] for row in entries))
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = 100
         solver.parameters.num_search_workers = 8
@@ -482,7 +699,7 @@ def solve_exam(data):
         for row in entries:
             slot, room_id = solver.Value(row['start']), solver.Value(row['room'])
             d, h = divmod(slot, slots_per_day)
-            hour = hour_start + h
+            exam_start = EXAM_HOURS[h]
             e, sec = row['exam'], row['section']
             proctor_id = solver.Value(row['proctor'])
             result.append({'section_subject_id': int(e['section_subject_id']),
@@ -493,7 +710,7 @@ def solve_exam(data):
                 'proctor_name': teachers[proctor_id]['teacher_name'],
                 'room_id': room_id, 'room_name': rooms[room_id]['room_name'],
                 'exam_day': d + 1, 'exam_date': days[d].isoformat(),
-                'start_time': f'{hour:02d}:00', 'end_time': f'{hour+1:02d}:00'})
+                'start_time': f'{exam_start:02d}:00', 'end_time': f'{exam_start + 1:02d}:00'})
         result.sort(key=lambda e: (e['year_level'], e['section_code'], e['exam_day'], e['start_time']))
         # Second-pass audit from assigned values (not CP-SAT booleans).
         problems = []
@@ -560,7 +777,7 @@ def solve_exam(data):
                 'paper_rotation_policy': ('Different subjects may run in parallel. The same subject within the same '
                                           'year level must use different exam times so test papers can rotate between sections.'),
                 'day_distribution_policy': ('Compact BCP distribution is enforced: 6 exams use 3+3 on consecutive days; '
-                                            '4-5 exams use two consecutive days; 7-9 exams are balanced across all three days. '
+                                            'BSIT Year 2 uses 3+3+2 and BSIT Year 3 uses 3+3+0; other years use compact distributions. '
                                             'Day 1 + Day 3 with an empty Day 2 is not allowed.'),
                 'class_policy': ('Selected examination dates suspend recurring regular classes; '
                                  'saved weekly classes remain stored and resume on non-exam dates.'),

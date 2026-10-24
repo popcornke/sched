@@ -1,0 +1,62 @@
+/* BCP Academic Office-only design system. Admin files are never imported or modified. */
+:root{--bcp-royal:#1d3e91;--bcp-ink:#142e59;--bcp-surface:#f4f6fb;--bcp-edge:#dfe7f3}
+body.acad-shell{background:var(--bcp-surface);color:var(--bcp-ink);font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif}
+.acad-shell .layout{display:block;min-height:100vh}
+.acad-shell .acad-sidebar{position:fixed;inset:0 auto 0 0;width:210px;z-index:70;background:#1d3e91;color:#fff;padding:0;overflow-y:auto;display:flex;flex-direction:column;transition:transform .25s ease;box-shadow:none}
+.acad-shell .acad-sidebar .brand{height:90px;min-height:90px;padding:13px 19px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #ffffff24}
+.acad-shell .acad-sidebar .brand img{width:42px;height:48px;object-fit:contain}
+.acad-shell .acad-notice{font-weight:800;font-size:10px;color:#dce8ff;border:1px solid #ffffff47;border-radius:20px;padding:5px 8px}
+.acad-shell .acad-side-heading{display:grid;gap:3px;padding:13px 13px 12px;border-bottom:1px solid #ffffff24;color:white}
+.acad-shell .acad-side-heading b{font-size:12px}.acad-shell .acad-side-heading small{color:#a9c3ee;font-size:10px}
+.acad-shell .acad-mod-heading{margin-top:10px;border-top:1px solid #ffffff24}
+.acad-shell .acad-sidebar nav{display:grid;gap:4px;padding:5px 6px 3px}
+.acad-shell .acad-sidebar nav a{color:#dde8ff;display:flex;align-items:center;gap:11px;padding:11px 14px;font-size:12px;font-weight:500;border-radius:9px;line-height:1.3;transition:background .18s}
+.acad-shell .acad-sidebar nav a:hover,.acad-shell .acad-sidebar nav a.active{background:#ffffff23;color:#fff}
+.acad-shell .acad-sidebar .acad-nav-symbol{width:18px;display:inline-grid;place-items:center;font-size:16px;font-weight:700;flex:none}
+.acad-shell .sidefoot{margin-top:auto;padding:12px 9px 17px;border-top:1px solid #ffffff27;display:block}
+.acad-shell .sidefoot button{background:#343e91;border:1px solid #5b60b9;color:#ff9c9b;text-align:left;width:100%;font-size:12px;padding:12px 16px;font-weight:800}
+.acad-shell .sidefoot button:hover{background:#4a438b;color:white}
+.acad-shell .main{min-width:0;margin-left:210px;transition:margin-left .25s ease}
+.acad-shell .acad-topbar{position:sticky;top:0;z-index:45;height:54px;display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:0 20px;background:#fff;box-shadow:0 1px 4px #0b21421a;border:0;color:#42516c}
+.acad-shell .acad-hamburger{display:grid;place-items:center;width:36px;height:36px;background:transparent;color:#404854;font-size:18px;padding:0;border-radius:8px}
+.acad-shell .acad-hamburger:hover{background:#edf2fb}
+.acad-shell .acad-topbar-spacer{flex:1}
+.acad-shell .acad-topbar .role{border:1px solid var(--bcp-edge);background:#f2f5f9;color:#4a5c77;padding:7px 12px;border-radius:8px;font-size:10px;font-weight:800;letter-spacing:.03em}
+.acad-shell .acad-avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:white;background:#1c4093;font-size:14px;font-weight:800}
+.acad-shell main.acad-content{max-width:none;margin:0 auto;padding:38px 37px 60px;width:100%}
+.acad-shell main h1{font-size:clamp(27px,3vw,37px);letter-spacing:-.055em;font-weight:800;color:#142e59;margin:0 0 6px}
+.acad-shell main p{color:#788ba9;font-size:12px}
+.acad-shell .eyebrow{color:#577eaa;font-size:10px;letter-spacing:.14em;font-weight:800}
+.acad-shell .card,.acad-shell .panel,.acad-shell .office-kpi,.acad-shell .office-mini{border:1px solid var(--bcp-edge);background:#fff;border-radius:18px;box-shadow:0 8px 24px #152e5910}
+.acad-shell .panel{padding:22px 24px;margin-top:18px}
+.acad-shell .office-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:22px 0}
+.acad-shell .office-kpi{padding:24px;min-height:177px;gap:9px;position:relative;overflow:hidden}
+.acad-shell .office-kpi:after{content:'';width:110px;height:110px;border-radius:50%;background:linear-gradient(130deg,#edf2fc,#fff);position:absolute;right:-46px;top:-48px;pointer-events:none}
+.acad-shell .office-kpi .kpi-icon{width:40px;height:40px;border-radius:12px;background:#edf3ff;color:#244f9f}
+.acad-shell .office-kpi small{text-transform:uppercase;font-weight:800;letter-spacing:.04em;font-size:10px;color:#70819f}
+.acad-shell .office-kpi strong{font-size:36px;color:#142e59;line-height:1.25}
+.acad-shell .office-kpi>span:last-child{color:#8798b1;font-size:11px}
+.acad-shell .office-hero h1{font-size:clamp(29px,3.2vw,39px);margin:11px 0 5px;color:#142e59}
+.acad-shell .office-hero-mark{background:#edf3ff;color:#1a3a8c}
+.acad-shell .office-mini{padding:23px}
+.acad-shell .office-mini b{color:#152d56}
+.acad-shell .office-panel-top h2{color:#142e59}
+.acad-shell table{font-size:12px}.acad-shell th{background:#f3f6fb;font-size:10px;color:#587093}.acad-shell td{color:#405471}
+.acad-shell .btn,.acad-shell button:not(.acad-hamburger){border-radius:10px}
+.acad-shell .btn.secondary,.acad-shell button.secondary{background:#eef2f8;color:#163a78}
+.acad-shell .btn:hover,.acad-shell button:hover{filter:brightness(.97)}
+.acad-shell .office-modal-shell{border-radius:20px}.acad-shell .office-modal-top{background:#fff}.acad-shell .office-modal-actions{background:#fff}
+body.acad-sidebar-hidden .acad-sidebar{transform:translateX(-100%)}body.acad-sidebar-hidden .main{margin-left:0}
+@media(max-width:900px){.acad-shell .acad-sidebar{box-shadow:3px 0 14px #102d5b22;transform:translateX(-100%)}.acad-shell .main{margin-left:0}body.acad-shell:not(.acad-sidebar-hidden) .acad-sidebar{transform:translateX(0)}.acad-shell main.acad-content{padding:22px 17px 50px}}
+@media(max-width:600px){.acad-shell .office-kpi-grid,.acad-shell .office-mini-grid{grid-template-columns:1fr 1fr;gap:10px}.acad-shell .office-kpi{padding:15px;min-height:148px}.acad-shell .office-kpi strong{font-size:28px}.acad-shell main.acad-content{padding:22px 12px}.acad-shell .acad-avatar{display:none}}
+@media print{.acad-shell .acad-sidebar,.acad-shell .acad-topbar{display:none!important}.acad-shell .main{margin-left:0!important}.acad-shell main.acad-content{padding:0}}
+/* Consistent controls and table framing throughout the Academic Office */
+.acad-shell .actions{margin:18px 0;gap:10px}
+.acad-shell .actions .btn.secondary{border:1px solid #e3eaf5;padding:12px 15px}
+.acad-shell .actions .btn.secondary:hover{background:#dfe8f9}
+.acad-shell .panel.scroll{overflow:auto}.acad-shell .panel table{min-width:720px}
+.acad-shell td .btn,.acad-shell td button{padding:9px 12px!important;white-space:nowrap}
+.acad-shell select,.acad-shell input,.acad-shell textarea{border-color:#dce5f4;background:#fff}
+.acad-shell .office-table-panel{margin-top:24px}
+.acad-shell .office-refresh{white-space:nowrap;background:#fff!important;border:1px solid #dfe6f2!important;color:#1b3d7b!important}
+.acad-shell a:focus-visible,.acad-shell button:focus-visible{outline:3px solid #8cb4ff;outline-offset:2px}

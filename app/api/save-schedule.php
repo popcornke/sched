@@ -5,7 +5,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/python.php';
 /**
  * BCP Phase 4C — DEMO-ONLY first-save endpoint.
- * POST {"save_token":"...","confirm":true} on the same browser session.
+ * Direct save is disabled for the Academic Office approval trial; approve via preview-action.php.
  * Do not deploy as an official/authenticated Save API.
  * Existing ACTIVE batches are never overwritten or superseded here.
  */
@@ -90,6 +90,7 @@ try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         rejectSave(405, 'POST_ONLY', 'Send a POST request to save a confirmed preview.');
     }
+    rejectSave(403, 'ACADEMIC_APPROVAL_REQUIRED', 'Direct schedule saving is disabled. Send the generated preview to Academic Office for approval.');
     // Development safety: local XAMPP and DEMO data only.
     if (!function_exists('curl_init')) {
         rejectSave(500, 'CURL_UNAVAILABLE', 'PHP cURL is required.');

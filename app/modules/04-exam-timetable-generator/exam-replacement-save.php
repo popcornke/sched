@@ -12,10 +12,8 @@ try {
         || strlen($body['preview_token'])!==64) {
         exFail(400,'PREVIEW_TOKEN_REQUIRED','Generate and review a replacement preview first.');
     }
-    session_name('BCP_EXAM_DEMO');
-    session_set_cookie_params(['httponly'=>true,'samesite'=>'Strict',
-        'path'=>'/BCP_SCHEDULING/app/modules/04-exam-timetable-generator']);
-    session_start();
+    // exGuard() already opened the authenticated BCP_AUTH session.
+    // Use that same session for the short-lived replacement preview token.
     $preview=$_SESSION['bcp_exam_replacement_preview']??null;
     if (!is_array($preview)
         || !hash_equals((string)($preview['token']??''),$body['preview_token'])

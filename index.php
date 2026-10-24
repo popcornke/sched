@@ -19,7 +19,7 @@ header("Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; bas
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 
 
-$dashboard = 'app/dashboard/dashboard.php';
+$dashboard = (($_SESSION['auth_role'] ?? '') === 'STAFF' ? 'app/staff/exams.php' : ((($_SESSION['auth_role'] ?? '') === 'ACADEMIC_OFFICE') ? 'app/academic-office/dashboard.php' : 'app/dashboard/dashboard.php'));
 
 
 /*
@@ -224,7 +224,9 @@ if (
 
                    AND role IN (
                        "ADMIN",
-                       "SCHEDULER"
+                       "SCHEDULER",
+                       "STAFF",
+                       "ACADEMIC_OFFICE"
                    )
 
                  LIMIT 1'
@@ -597,6 +599,22 @@ if (
                      * authenticated session yet. The account must first
                      * pass email OTP verification.
                      */
+                    // Only STAFF may authenticate with password alone.
+                    // ADMIN and SCHEDULER retain their existing email OTP workflow.
+                    if (in_array((string) $user['role'], ['STAFF', 'ACADEMIC_OFFICE'], true)) {
+                        session_regenerate_id(true);
+                        $_SESSION = [];
+                        $_SESSION['auth_user_id'] = (int) $user['user_id'];
+                        $_SESSION['auth_username'] = (string) $user['username'];
+                        $_SESSION['auth_role'] = (string) $user['role'];
+                        $_SESSION['auth_login_time'] = time();
+                        $_SESSION['auth_last_activity'] = time();
+                        $_SESSION['auth_regenerated_at'] = time();
+                        authCsrf();
+                        header('Location: ' . ((string)$user['role'] === 'ACADEMIC_OFFICE' ? 'app/academic-office/dashboard.php' : 'app/staff/exams.php'), true, 303);
+                        exit;
+                    }
+
                     $email = trim(
                         (string) (
                             $user['email']

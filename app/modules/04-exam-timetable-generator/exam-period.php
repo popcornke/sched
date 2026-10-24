@@ -171,7 +171,7 @@ try {
         foreach($activeRows as $row){
             $batchId=(int)$row['exam_batch_id'];
             $programCode=(string)$row['program_code'];
-            $snapshot=exBuildInput($pdo,(int)$periodId,$dates,'06-21',$batchId,$programCode);
+            $snapshot=exBuildInput($pdo,(int)$periodId,$dates,'06-18',$batchId,$programCode);
             $assignments=exSavedAssignmentsForDateRevalidation($pdo,$batchId);
             $proposal=[
                 'success'=>true,

@@ -92,8 +92,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             <div class="bcp-exam__control">
               <label for="examWindow">Exam hours</label>
               <select id="examWindow">
-                <option value="06-21">6:00 AM – 9:00 PM</option>
-                <option value="18-21">6:00 PM – 9:00 PM (may be infeasible)</option>
+                <option value="06-18">Fixed shifts · 6:00 AM – 6:00 PM</option>
               </select>
             </div>
             <div class="bcp-exam__control">
@@ -640,7 +639,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           dayGrid.append(day);
         }
         grid.append(dayGrid);
-        grid.append(make('p', 'Each exam is 60 minutes. All exams shown for the section are consecutive per exam day. Fourth-year students must also check their individual Cluster and Major membership.', 'bcp-exam__sheet-note'));
+        grid.append(make('p', 'Each subject is a 1-hour exam. Every section keeps the SAME fixed shift on all three exam days (6–9 AM, 9 AM–12 PM, 12–3 PM, or 3–6 PM). Up to three subjects run consecutively per day. Fourth-year students must also check their individual Cluster and Major membership.', 'bcp-exam__sheet-note'));
 
         bodyInner.append(grid);
         bodyWrap.append(bodyInner);

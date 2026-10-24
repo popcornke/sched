@@ -1,0 +1,11 @@
+function closeReport(){const u=new URL(location.href);u.searchParams.delete('report_id');u.searchParams.delete('saved');location.assign(u.toString());}
+document.addEventListener('keydown',e=>{if(e.key==='Escape' && document.getElementById('reportModal'))closeReport();});
+function printReport(){
+ const content=document.getElementById('report-document');if(!content)return;
+ const printable=content.cloneNode(true);printable.querySelectorAll('img').forEach((img)=>{img.src=new URL(img.getAttribute('src'),location.href).href;});
+ const wnd=window.open('','_blank','width=1000,height=760');if(!wnd){alert('Please allow pop-ups to print this report.');return;}
+ const cssUrl=new URL('assets/office.css',location.href).href;
+ const styles=`<link rel="stylesheet" href="${cssUrl}"><style>body{font-family:Arial,sans-serif;background:white;color:#111;margin:0}.report-doc-heading{text-align:center;padding:12px 0;border-bottom:2px solid #263d64}.report-doc-meta{font-size:11px}.report-doc-meta span{margin:0 7px}.report-pills{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 0}.report-pill{border:1px solid #d2dae5;padding:10px}.report-pill small{display:block}.report-pill b{font-size:20px}.acad-document-list{display:block}.acad-document{box-shadow:none;border:0;border-radius:0;break-after:page;padding:12px 0}.acad-document:last-child{break-after:auto}.acad-document-school{text-align:center;display:grid;justify-items:center;gap:9px;border-bottom:2px solid #222;padding-bottom:12px}.acad-document-school img{width:48px;height:58px}.acad-document-details{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:15px 0;font-size:12px}.acad-table-scroll{overflow:visible}.acad-document-table{width:100%;min-width:0;border-collapse:collapse;font-size:9px}.acad-document-table th,.acad-document-table td{border:1px solid #333;padding:6px 4px}.acad-document-table th{background:#eee}.report-current-note{font-size:10px}@page{size:A4 landscape;margin:12mm}</style>`;
+
+ wnd.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Academic Approval Report</title>'+styles+'</head><body>'+printable.innerHTML+'</body></html>');wnd.document.close();wnd.focus();wnd.print();
+}

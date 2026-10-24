@@ -418,7 +418,7 @@ function exAllowedDayPatterns(int $examCount): array
     return [[3, 3, 3]];
 }
 
-function exValidateDayDistribution(array $events, bool $fourthYearClusterMajor = false): void
+function exValidateDayDistribution(array $events, bool $fourthYearClusterMajor = false, ?int $yearLevel = null, string $programCode = ''): void
 {
     $counts = [0, 0, 0];
     foreach ($events as $event) {
@@ -435,7 +435,13 @@ function exValidateDayDistribution(array $events, bool $fourthYearClusterMajor =
         }
         return;
     }
-    $patterns = exAllowedDayPatterns(count($events));
+    if (strtoupper($programCode) === 'BSIT' && $yearLevel === 2 && count($events) === 8) {
+        $patterns = [[3, 3, 2]];
+    } elseif (strtoupper($programCode) === 'BSIT' && $yearLevel === 3 && count($events) === 6) {
+        $patterns = [[3, 3, 0]];
+    } else {
+        $patterns = exAllowedDayPatterns(count($events));
+    }
     if (!$patterns || !in_array($counts, $patterns, true)) {
         exFail(
             422,
@@ -449,7 +455,7 @@ function exBuildInput(PDO $pdo, int $periodId, array $dates, string $window, ?in
 {
     $dates = exDates($dates);
     $unifiedExamPeriod = exAssertUnifiedDates($pdo, $periodId, $dates);
-    if (!in_array($window, ['06-21', '18-21'], true)) exFail(400, 'INVALID_WINDOW', 'Invalid examination time window.');
+    if (!in_array($window, ['06-18', '06-21'], true)) exFail(400, 'INVALID_WINDOW', 'Invalid examination time window.');
     $programCode = strtoupper(trim($programCode));
     if (!preg_match('/^[A-Z0-9-]{2,30}$/', $programCode)) exFail(400, 'INVALID_PROGRAM', 'Choose a valid program.');
     $period = exRows($pdo, "SELECT academic_period_id,academic_year,semester,period_status FROM academic_periods WHERE academic_period_id=:id AND period_status='DEMO'", ['id' => $periodId]);
@@ -503,8 +509,8 @@ function exBuildInput(PDO $pdo, int $periodId, array $dates, string $window, ?in
         'program_id' => $programId,
         'data_origin' => 'DEMO',
         'exam_dates' => $dates,
-        'start_hour' => $window === '06-21' ? 6 : 18,
-        'end_hour' => 21,
+        'start_hour' => 6,
+        'end_hour' => 18,
         'regular_classes_suspended_on_exam_dates' => true,
         'sections' => $sections,
         'exams' => $exams,
@@ -576,6 +582,7 @@ function exValidate(array $snapshot, array $proposal): void
     $events = [];
     $sectionEvents = [];
     $sectionProctors = [];
+    $sectionShifts = [];
     foreach ($rows as $r) {
         if (!is_array($r)) exFail(422, 'INVALID_EXAM_ROW', 'Malformed exam meeting.');
         $ss = (int)($r['section_subject_id'] ?? 0);
@@ -603,10 +610,16 @@ function exValidate(array $snapshot, array $proposal): void
         if ($day < 1 || $day > 3 || ($r['exam_date'] ?? '') !== $dates[$day - 1]) exFail(422, 'EXAM_DATE_INVALID', 'Exam day/date does not match selected dates.');
         $start = exTime((string)($r['start_time'] ?? ''));
         $end = exTime((string)($r['end_time'] ?? ''));
-        if ($end - $start !== 60 || $start % 60 !== 0 || $start < $input['start_hour'] * 60 || $end > $input['end_hour'] * 60) exFail(422, 'EXAM_TIME_INVALID', 'Exam duration or examination window is invalid.');
+        if ($end - $start !== 60 || $start < 360 || $end > 1080 || $start % 60 !== 0) exFail(422, 'EXAM_TIME_INVALID', 'Each subject must last exactly one hour, within the official 06:00–18:00 exam shifts.');
+        // Same section = same fixed three-hour shift on every exam day.
+        $shift = intdiv($start - 360, 180);
+        if (isset($sectionShifts[$sid]) && $sectionShifts[$sid] !== $shift) {
+            exFail(422, 'SECTION_EXAM_SHIFT_CHANGED', 'A section must keep the same three-hour exam shift on Day 1, Day 2, and Day 3.');
+        }
+        $sectionShifts[$sid] = $shift;
         $weekday = (new DateTimeImmutable($dates[$day - 1]))->format('l');
         if (
-            !isset($slots[$weekday][$start . '-' . ($start + 30)], $slots[$weekday][($start + 30) . '-' . $end])
+            count(array_filter(range($start, $end - 30, 30), static fn($minute) => isset($slots[$weekday][$minute . '-' . ($minute + 30)]))) !== 2
             || !exCovers($roomWin, $rid, $weekday, $start, $end) || !exCovers($teacherWin, $tid, $weekday, $start, $end)
         ) {
             exFail(422, 'EXAM_RESOURCE_UNAVAILABLE', 'An exam is not covered by active time slots, room availability, or teacher availability.');
@@ -687,7 +700,7 @@ function exValidate(array $snapshot, array $proposal): void
         } elseif ($isBsitFourth && $sec['section_type'] === 'MAJOR') {
             if (count($rowsInSection) !== 1 || $rowsInSection[0]['exam_day'] !== 3) exFail(422, 'MAJOR_DAY_INVALID', 'Fourth-year BSIT Major must have one exam on Day 3.');
         } else {
-            exValidateDayDistribution($rowsInSection);
+            exValidateDayDistribution($rowsInSection, false, (int)$sec['year_level'], (string)$input['program_code']);
         }
     }
     if (!$groups) exFail(422, 'STUDENTS_NOT_LOADED', 'Student memberships were not loaded.');
@@ -704,7 +717,10 @@ function exValidate(array $snapshot, array $proposal): void
             $hasMajor = $hasMajor || strtoupper((string)$sec['section_type']) === 'MAJOR';
         }
         exConsecutive($combined);
-        exValidateDayDistribution($combined, (string)$input['program_code'] === 'BSIT' && $allFourth && $hasCluster && $hasMajor);
+        $yearsInGroup = array_unique(array_map(static fn($sid) => (int)$bySection[$sid]['year_level'], $set));
+        $groupYear = count($yearsInGroup) === 1 ? reset($yearsInGroup) : null;
+        exValidateDayDistribution($combined, (string)$input['program_code'] === 'BSIT' && $allFourth && $hasCluster && $hasMajor,
+            $groupYear === null ? null : (int)$groupYear, (string)$input['program_code']);
     }
 }
 function exConsecutive(array $events): void

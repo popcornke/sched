@@ -1,7 +1,7 @@
 """Independent read-only checks for Module 4's proposed examination timetable.
 
 No OR-Tools dependency: this module inspects actual solver output, not model flags.
-All times are local wall-clock HH:MM and every exam is precisely 60 minutes.
+All times are local wall-clock HH:MM and every exam lasts one hour within one of four official three-hour shifts.
 For shared students, membership is taken from actual student rows, not section numbering.
 """
 from collections import defaultdict
@@ -35,13 +35,18 @@ def _distribution_counts(events, ordered_dates):
     return tuple(counts)
 
 
-def _check_distribution(label, events, ordered_dates, issues, fourth_cluster_major=False):
+def _check_distribution(label, events, ordered_dates, issues, fourth_cluster_major=False, year=None, program_code=None):
     counts = _distribution_counts(events, ordered_dates)
     if fourth_cluster_major:
         if counts != (0, 3, 1):
             issues.append(f'{label}: expected Day 2 = 3 Cluster exams and Day 3 = 1 Major exam; got {counts}.')
         return
-    patterns = _allowed_patterns(len(events))
+    if str(program_code).upper() == 'BSIT' and year == 2 and len(events) == 8:
+        patterns = [(3, 3, 2)]
+    elif str(program_code).upper() == 'BSIT' and year == 3 and len(events) == 6:
+        patterns = [(3, 3, 0)]
+    else:
+        patterns = _allowed_patterns(len(events))
     if not patterns or counts not in patterns:
         issues.append(f'{label}: invalid exam-day distribution {counts}; compact consecutive-day distribution is required.')
 
@@ -76,8 +81,8 @@ def audit_zero_exam_gaps(assignments, sections, students, exam_dates, program_co
                 issues.append(f'Unknown section {sid} in examination output.')
             if actual_date not in expected_dates:
                 issues.append(f'Exam assigned outside selected dates: {actual_date}.')
-            if end - start != 60:
-                issues.append(f'Exam in section {sid} has duration {end-start}, not 60 minutes.')
+            if end - start != 60 or start not in range(360, 1080, 60):
+                issues.append(f'Exam in section {sid} must last exactly one hour between 06:00 and 18:00.')
             by_section[sid].append((actual_date, start, end, str(x.get('subject_code', 'UNKNOWN'))))
         except (ValueError, KeyError, TypeError) as exc:
             issues.append(f'Invalid examination assignment: {exc}')
@@ -94,6 +99,8 @@ def audit_zero_exam_gaps(assignments, sections, students, exam_dates, program_co
                 elif later[1] > earlier[2]:
                     issues.append(f'{label}: vacant {later[1]-earlier[2]} minutes on {day} '
                                   f'between {earlier[3]} and {later[3]}.')
+            if slots and (slots[0][1] - 360) // 180 != (slots[-1][2] - 1 - 360) // 180:
+                issues.append(f'{label}: exams on {day} cross a three-hour shift boundary.')
             if len(slots) > 3:
                 issues.append(f'{label}: {len(slots)} exams on {day}; limit is three.')
 
@@ -101,6 +108,12 @@ def audit_zero_exam_gaps(assignments, sections, students, exam_dates, program_co
         sec = sections[sid]
         rows = by_section[sid]
         check(f'Section {sec["section_code"]}', rows)
+        # Independently verify the one-shift-per-section policy across dates,
+        # including sections with fewer than three exams in any one day.
+        shifts = {(start - 360) // 180 for _, start, _, _ in rows}
+        if len(shifts) > 1:
+            issues.append(f'Section {sec["section_code"]}: exam shift changes between days; '
+                          'the same three-hour shift is required for the full exam period.')
         is_bsit_special = (
             str(program_code).upper() == 'BSIT'
             and int(sec['year_level']) == 4
@@ -108,7 +121,8 @@ def audit_zero_exam_gaps(assignments, sections, students, exam_dates, program_co
         )
         if not is_bsit_special:
             _check_distribution(f'Section {sec["section_code"]}', rows,
-                                [date.fromisoformat(value).isoformat() for value in exam_dates], issues)
+                                [date.fromisoformat(value).isoformat() for value in exam_dates], issues,
+                                year=int(sec['year_level']), program_code=program_code)
 
     # Independent BSIT fourth-year policy: verify final assigned exam dates
     # and hours without reading any CP-SAT variables, and without pairing
@@ -177,7 +191,10 @@ def audit_zero_exam_gaps(assignments, sections, students, exam_dates, program_co
             and any(str(sec['section_type']).upper() == 'CLUSTER' for sec in group_sections)
             and any(str(sec['section_type']).upper() == 'MAJOR' for sec in group_sections)
         )
-        _check_distribution(label, combined, dates_in_order, issues, special_fourth)
+        unique_years = {int(sec['year_level']) for sec in group_sections}
+        year = next(iter(unique_years)) if len(unique_years) == 1 else None
+        _check_distribution(label, combined, dates_in_order, issues, special_fourth,
+                            year=year, program_code=program_code)
 
     return {
         'passed': not issues,

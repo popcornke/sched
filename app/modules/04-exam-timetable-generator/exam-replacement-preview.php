@@ -16,7 +16,7 @@ try {
     if (!$periodId || !$oldId || !is_array($body['exam_dates']??null)) {
         exFail(400,'REPLACEMENT_INPUT_REQUIRED','Select the period, current exam batch and three examination dates.');
     }
-    $window=(string)($body['exam_window']??'06-21');
+    $window=(string)($body['exam_window']??'06-18');
     $pdo=getDatabase();
     $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
     $snapshot=exBuildInput($pdo,(int)$periodId,$body['exam_dates'],$window,(int)$oldId,$programCode);
@@ -37,10 +37,8 @@ try {
     if (($output['success']??false)!==true) exReply(422,$output+['database_write'=>false]);
     // Independent PHP audit against FRESH source facts, excluding ONLY old exams.
     exValidate($snapshot,$output);
-    session_name('BCP_EXAM_DEMO');
-    session_set_cookie_params(['httponly'=>true,'samesite'=>'Strict',
-        'path'=>'/BCP_SCHEDULING/app/modules/04-exam-timetable-generator']);
-    session_start();
+    // exGuard() already opened the authenticated BCP_AUTH session.
+    // Use that same session for the short-lived replacement preview token.
     $token=bin2hex(random_bytes(32));
     $_SESSION['bcp_exam_replacement_preview']=[
         'token'=>$token,'created_at'=>time(),'period_id'=>(int)$periodId,'program'=>$programCode,

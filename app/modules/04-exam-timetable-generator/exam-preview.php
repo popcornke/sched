@@ -6,7 +6,7 @@ require_once __DIR__ . '/exam-common.php';
 require_once __DIR__ . '/../../config/python.php';
 try {
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
-        exGuard('GET');
+        authRequire(true, ['ADMIN', 'SCHEDULER', 'STAFF']);
         $pdo = getDatabase();
         $periods = exRows($pdo, "SELECT academic_period_id,academic_year,semester FROM academic_periods WHERE period_status='DEMO' ORDER BY academic_period_id DESC");
         $programs = exRows($pdo, "SELECT program_code,program_name FROM programs WHERE is_active=1 AND education_level='College' ORDER BY program_code");
@@ -21,7 +21,7 @@ try {
     if (!$periodId || !is_array($body['exam_dates'] ?? null)) exFail(400, 'INVALID_SELECTION', 'Choose a period and three examination dates.');
     $pdo = getDatabase();
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $snapshot = exBuildInput($pdo, (int)$periodId, $body['exam_dates'], (string)($body['exam_window'] ?? '06-21'), null, $programCode);
+    $snapshot = exBuildInput($pdo, (int)$periodId, $body['exam_dates'], (string)($body['exam_window'] ?? '06-18'), null, $programCode);
     foreach ($snapshot['active_exam_batches'] as $old) {
         if ((int)$old['program_id'] === (int)$snapshot['program']['program_id'] && $old['exam_label'] === 'DEMO-EXAM') {
             exFail(409, 'EXAM_ALREADY_SAVED', 'An ACTIVE ' . $programCode . ' DEMO exam timetable exists. View the saved exams; replacement is a separate workflow.');
@@ -61,7 +61,7 @@ try {
         'period_id' => (int)$periodId,
         'program' => $programCode,
         'dates' => $snapshot['input']['exam_dates'],
-        'window' => (string)($body['exam_window'] ?? '06-21'),
+        'window' => (string)($body['exam_window'] ?? '06-18'),
         'class_batch_id' => $snapshot['class_batch_id'],
         'input_hash' => exJsonHash($snapshot),
         'result' => $output

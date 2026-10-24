@@ -114,8 +114,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             <button type="button" id="bcpGenerateButton" class="bcp-preview__btn-primary" title="Run the automated scheduling engine" hidden disabled>
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Schedule
                             </button>
-                            <button type="button" id="bcpSaveButton" class="bcp-preview__btn-primary" title="Commit this timetable to the database" hidden disabled>
-                                <i class="fa-solid fa-floppy-disk"></i> Save DEMO Schedule
+                            <button type="button" id="bcpSaveButton" class="bcp-preview__btn-primary" title="Send generated preview for approval without saving the schedule" hidden disabled>
+                                <i class="fa-solid fa-paper-plane"></i> Send to Academic Office
                             </button>
                             <button type="button" id="bcpReplaceButton" class="bcp-preview__btn-primary bcp-preview__btn-warning" title="Overwrite the currently active batch" hidden disabled>
                                 <i class="fa-solid fa-triangle-exclamation"></i> Confirm &amp; Replace DEMO
@@ -934,6 +934,14 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     });
                     const saved = await getJson(`../api/saved-schedule.php?${query}`);
                     if (version !== requestVersion) return;
+                    let approvalRequest = null;
+                    try {
+                        const a = await getJson(`../api/academic-preview-status.php?program_id=${encodeURIComponent(selectedProgram.program_id)}&academic_period_id=${encodeURIComponent(p.academic_period_id)}`);
+                        approvalRequest = a.request || null;
+                    } catch (approvalError) {
+                        console.warn('Approval status unavailable', approvalError);
+                    }
+                    if (version !== requestVersion) return;
                     if (saved.status === "SAVED_SCHEDULE_LOADED") {
                         if (!Array.isArray(saved.assignments) || saved.assignments.length !== saved.saved_meetings) throw new Error("Saved timetable is incomplete. Please review the database.");
                         showAssignments(saved.assignments);
@@ -953,7 +961,16 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         el("bcpProgramNote").textContent = eligible ? `${selectedProgram.demo_sections} DEMO sections · ${selectedProgram.program_code} scheduling configuration is available.` : "No saved timetable. Generation is disabled until inputs are ready.";
                         el("bcpActionDescription").textContent = eligible ? `Generate a new ${selectedProgram.program_code} DEMO timetable, review it, then confirm saving.` : "Saved timetable viewing is available. Generation is not configured yet.";
                         setEmpty(eligible ? "Click Generate Schedule to create a new preview." : "No saved timetable.");
-                        setStatus(eligible ? "Ready to generate schedule." : "No schedule available.", "info");
+                        if (approvalRequest?.status === "REJECTED") {
+                            setStatus(`REJECTED — Generate Again. Academic Office reason: ${approvalRequest.reason || "No reason provided"}`, "error");
+                            el("bcpActionDescription").textContent = "Academic Office rejected the previous request. Generate a NEW timetable, review, and send a new request.";
+                        } else if (approvalRequest?.status === "PENDING_REVIEW") {
+                            generateButton.hidden = true;
+                            setEmpty(`Request #${approvalRequest.request_id} is pending Academic Office approval.`);
+                            setStatus(`PENDING APPROVAL — Request #${approvalRequest.request_id}. Await Academic Office decision.`, "info");
+                        } else {
+                            setStatus(eligible ? "Ready to generate schedule." : "No schedule available.", "info");
+                        }
                     } else {
                         throw new Error(`Unexpected saved timetable status: ${saved.status}`);
                     }
@@ -1103,7 +1120,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     if (result.save_ready_demo === true && typeof result.save_token === "string") {
                         saveToken = result.save_token;
                         saveButton.hidden = false;
-                        setStatus("Timetable generated and audited. Review before saving.", "success");
+                        setStatus("Timetable generated and audited. Review before sending to Academic Office.", "success");
                     }
                     generateButton.hidden = true;
                 } catch (err) {
@@ -1119,33 +1136,33 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
             async function saveSchedule() {
                 if (busy || !saveToken || !selectedProgram) return;
-                if (!window.confirm("Save this reviewed DEMO timetable?")) return;
+                if (!window.confirm("Send this generated timetable to Academic Office for review? The schedule will be saved only after approval.")) return;
                 const token = saveToken;
                 const periodId = selectedPeriod()?.academic_period_id;
                 const programCode = selectedProgram.program_code;
                 setBusy(true);
-                saveButton.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…`;
-                setStatus("Saving the DEMO timetable…", "loading");
+                saveButton.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Sending…`;
+                setStatus("Sending preview to Academic Office (not yet saving)…", "loading");
                 try {
-                    const saved = await getJson("../api/save-schedule.php", {
+                    const saved = await getJson("../api/request-academic-preview.php", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json"
                         },
                         body: JSON.stringify({
                             save_token: token,
-                            confirm: true
+                            csrf_token: <?=json_encode(authCsrf())?>
                         })
                     });
-                    if (saved.status !== "DEMO_SCHEDULE_SAVED") throw new Error("Save failed.");
+                    if (saved.status !== "PENDING_REVIEW") throw new Error("Request failed.");
                     saveToken = null;
                     saveButton.hidden = true;
                     await loadCatalog(periodId, programCode, true);
-                    setStatus(`Saved DEMO batch #${saved.batch_id} successfully. The ACTIVE saved timetable is now displayed.`, "success");
+                    setStatus(`Request #${saved.request_id} sent. Awaiting Academic Office approval. No schedule has been saved yet.`, "success");
                 } catch (err) {
                     setStatus(readableError(err, "The timetable could not be saved. The preview remains unsaved."), "error");
                 } finally {
-                    saveButton.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save DEMO Schedule`;
+                    saveButton.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Send to Academic Office`;
                     setBusy(false);
                 }
             }

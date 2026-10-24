@@ -1,0 +1,45 @@
+/* Academic Office dashboard ONLY — compact statistics; leave recent requests panel dimensions untouched. */
+@media (min-width: 1180px) {
+ .acad-shell .office-kpi-grid {grid-template-columns:repeat(4,minmax(0,1fr));}
+}
+.acad-shell .office-hero {margin-bottom:12px;}
+.acad-shell .office-hero h1 {margin:5px 0 3px;font-size:clamp(25px,2.5vw,32px);}
+.acad-shell .office-kpi-grid {gap:12px;margin:14px 0 12px;}
+.acad-shell .office-kpi {padding:15px 17px;min-height:128px;gap:5px;border-radius:14px;}
+.acad-shell .office-kpi .kpi-icon {width:30px;height:30px;border-radius:9px;font-size:16px;}
+.acad-shell .office-kpi small {font-size:9px;line-height:1.35;}
+.acad-shell .office-kpi strong {font-size:27px;line-height:1.1;}
+.acad-shell .office-kpi>span:last-child {font-size:10px;line-height:1.3;}
+.acad-shell .office-kpi:after {width:74px;height:74px;right:-30px;top:-30px;}
+.acad-shell .office-mini-grid {gap:12px;margin-top:0;}
+.acad-shell .office-mini {padding:12px 17px;gap:3px;border-radius:14px;}
+.acad-shell .office-mini span {font-size:11px;}
+.acad-shell .office-mini b {font-size:22px;line-height:1.15;}
+.acad-shell .office-mini small {font-size:10px;line-height:1.3;}
+/* Distinct action tiles, leaving Recent Schedule Requests dimensions intact. */
+.acad-shell .office-report-btn{background:#203e88;color:white;padding:12px 18px;border-radius:12px;box-shadow:0 5px 14px #203e8822}
+.acad-shell .office-actions-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.acad-shell .office-shortcut{display:flex;align-items:center;gap:13px;background:white;border:1px solid #dee7f4;border-radius:15px;padding:15px 17px;text-decoration:none;color:#19365f;box-shadow:0 6px 18px #1d37620b;transition:transform .15s,box-shadow .15s}
+.acad-shell .office-shortcut:hover{transform:translateY(-2px);box-shadow:0 9px 25px #1d37621a;border-color:#a4bce8}
+.acad-shell .office-shortcut-icon{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border-radius:12px;background:#edf3ff;color:#2353a8;font-size:21px}
+.acad-shell .office-shortcut>span:nth-child(2){display:grid;gap:3px;flex:1;min-width:0}
+.acad-shell .office-shortcut strong{font-size:13px;line-height:1.3}
+.acad-shell .office-shortcut small{font-size:11px;color:#71829d;font-weight:400;line-height:1.4}
+.acad-shell .office-shortcut-arrow{font-size:22px;color:#3769bf}
+@media(max-width:760px){.acad-shell .office-actions-grid{grid-template-columns:1fr}.acad-shell .office-hero{flex-wrap:wrap}}
+/* Same-page tabs, matching Current History / Archived History. */
+.acad-shell .acad-view-choices{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:17px 0 13px}
+.acad-shell .acad-choice{font-family:inherit;border:1px solid #e2e9f4;background:#edf1f7;color:#26406a;border-radius:10px;min-height:38px;padding:9px 15px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background .15s,border-color .15s}
+.acad-shell .acad-choice:hover{background:#e4ecf8;border-color:#b8cbe7}
+.acad-shell .acad-choice.active{background:#203e88;color:#fff;border-color:#203e88}
+.acad-shell .acad-tab-panel[hidden]{display:none!important}
+.acad-shell .acad-inline-report{width:100%;height:680px;border:0;display:block;background:white;border-radius:14px}
+.acad-shell .acad-reports-panel{padding:0;overflow:hidden}
+@media(max-width:760px){.acad-shell .acad-inline-report{height:740px}}
+/* Recent Schedule Requests retains its previous panel padding and height. */
+@media(max-width:600px) {
+ .acad-shell .office-kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+ .acad-shell .office-kpi {padding:12px;min-height:122px;}
+ .acad-shell .office-mini-grid {grid-template-columns:1fr 1fr;gap:9px;}
+ .acad-shell .office-mini {padding:11px;}
+}

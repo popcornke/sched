@@ -139,6 +139,7 @@ if (
      */
 
     if (!authCsrfValid($token)) {
+        error_log('BCP auth v22: csrf_rejected');
 
         http_response_code(403);
 
@@ -172,6 +173,7 @@ if (
         try {
 
             $db = authDb();
+            error_log('BCP auth v22: db_connected schema=' . (string) $db->query('SELECT DATABASE()')->fetchColumn());
 
             $db->setAttribute(
                 PDO::ATTR_ERRMODE,
@@ -247,10 +249,8 @@ if (
                     PDO::FETCH_ASSOC
                 );
 
-            // Diagnostic: no usernames, passwords, or hashes are logged.
-            if (!$user) {
-                error_log('BCP auth diagnostic: account lookup returned no eligible row');
-            }
+            // Never log usernames, passwords, or password hashes.
+            error_log('BCP auth v22: lookup=' . ($user ? 'found' : 'not_found'));
 
 
 
@@ -339,6 +339,7 @@ if (
 
                 $accountActive =
                     (int) $user['is_active'] === 1;
+                error_log('BCP auth v22: password=' . ($passwordCorrect ? 'match' : 'mismatch') . ' active=' . ($accountActive ? 'yes' : 'no'));
 
 
                 /*
@@ -612,6 +613,7 @@ if (
                     // Only STAFF may authenticate with password alone.
                     // ADMIN and SCHEDULER retain their existing email OTP workflow.
                     if (in_array((string) $user['role'], ['STAFF', 'ACADEMIC_OFFICE'], true)) {
+                        error_log('BCP auth v22: password_only_session_start');
                         session_regenerate_id(true);
                         $_SESSION = [];
                         $_SESSION['auth_user_id'] = (int) $user['user_id'];
@@ -1512,8 +1514,7 @@ function loginEscape(
 
                 <p class="login-support">
 
-                    Authorized Admin and Scheduler
-                    access only.
+                    Authorized Admin, Scheduler, Staff, and Academic Office access. (Login v22)
 
                 </p>
 

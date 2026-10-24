@@ -223,10 +223,10 @@ if (
                  WHERE username = :username
 
                    AND role IN (
-                       "ADMIN",
-                       "SCHEDULER",
-                       "STAFF",
-                       "ACADEMIC_OFFICE"
+                       :role_admin,
+                       :role_scheduler,
+                       :role_staff,
+                       :role_academic
                    )
 
                  LIMIT 1'
@@ -234,7 +234,11 @@ if (
 
 
             $stmt->execute([
-                'username' => $username
+                'username' => $username,
+                'role_admin' => 'ADMIN',
+                'role_scheduler' => 'SCHEDULER',
+                'role_staff' => 'STAFF',
+                'role_academic' => 'ACADEMIC_OFFICE',
             ]);
 
 
@@ -242,6 +246,12 @@ if (
                 $stmt->fetch(
                     PDO::FETCH_ASSOC
                 );
+
+            // Diagnostic: no usernames, passwords, or hashes are logged.
+            if (!$user) {
+                error_log('BCP auth diagnostic: account lookup returned no eligible row');
+            }
+
 
 
             /*

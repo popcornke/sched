@@ -129,6 +129,18 @@ try {
             }
         }
     }
+    // Old fixed-room locks must never force the solver to reuse a closed room.
+    $eligibleRooms = [];
+    foreach ($source['scheduling_input']['rooms'] as $candidate) {
+        $eligibleRooms[(int)$candidate['room_id']] = true;
+    }
+    foreach ($roomLocks as $secId => $lockedRoomId) {
+        if (!isset($eligibleRooms[$lockedRoomId])) {
+            replacementInputFail(409, 'LOCKED_ROOM_CLOSED',
+                'Section ' . $secId . ' has a fixed room that is UNAVAILABLE or under MAINTENANCE. '
+                . 'Resolve the room relocation or use a room-aware regeneration workflow before replacing this timetable.');
+        }
+    }
     $source['scheduling_input']['replacement_room_locks'] = $roomLocks;
     $source['scheduling_input']['existing_meetings'] = $otherPrograms;
     $source['counts']['existing_meetings'] = count($otherPrograms);

@@ -4,9 +4,9 @@ require_once __DIR__.'/shared.php';
 $id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
 if(!$id){http_response_code(400);exit('Invalid request');}
 $db=acadDb();
-$q=$db->prepare("SELECT ar.*, p.program_code,p.program_name,ap.academic_year,ap.semester FROM academic_preview_requests ar JOIN programs p ON p.program_id=ar.program_id JOIN academic_periods ap ON ap.academic_period_id=ar.academic_period_id WHERE ar.request_id=? AND ar.status='PENDING_REVIEW' AND ar.deleted_at IS NULL");
+$q=$db->prepare("SELECT ar.*, p.program_code,p.program_name,ap.academic_year,ap.semester FROM academic_preview_requests ar JOIN programs p ON p.program_id=ar.program_id JOIN academic_periods ap ON ap.academic_period_id=ar.academic_period_id WHERE ar.request_id=? AND ar.status IN ('PENDING_REVIEW','APPROVED','REJECTED') AND ar.deleted_at IS NULL AND ar.purged_at IS NULL");
 $q->execute([$id]);$r=$q->fetch(PDO::FETCH_ASSOC);
-if(!$r){http_response_code(404);exit('Pending request not available');}
+if(!$r){http_response_code(404);exit('Review document not available');}
 $preview=json_decode((string)$r['payload_json'],true);
 $meetings=$preview['result']['assignments']??[];
 if(!is_array($meetings))$meetings=[];
@@ -44,6 +44,7 @@ function spanTime(?array $m):string{return $m?tm($m['start']).' – '.tm($m['end
 if(($_GET['embedded']??'')==='1'){echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Official Schedule Review</title><link rel="stylesheet" href="assets/office.css"></head><body class="embedded-document"><main class="embedded-document-main">';}else{acadLayout('View Pending Schedule');}
 if(($_GET['embedded']??'')!=='1')echo '<div class="actions no-print"><a class="btn secondary" href="preview-review.php">← Back to Approval History</a><button type="button" onclick="window.print()">Print / Save as PDF</button></div>'; 
 echo '<h1>Official-Format Schedule Preview</h1><p>Read-only display of the submitted timetable · Request #'.(int)$id.' · '.acadH($r['status']).'. Read-only. Use the browser print dialog to save as PDF.</p>';
+if(trim((string)($r['reason']??''))!=='')echo '<div class="panel"><strong>Academic Office decision remarks:</strong> '.acadH($r['reason']).'</div>';
 echo '<div class="acad-document-list">';
 foreach($groups as $code=>$data){
  echo '<section class="acad-document"><div class="acad-document-school"><img src="../assets/images/BCP_LOGO.png" alt="BCP logo"><strong>BESTLINK COLLEGE OF THE PHILIPPINES</strong><b>Generated Class Schedule — For Approval</b></div>';

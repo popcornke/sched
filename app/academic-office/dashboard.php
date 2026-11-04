@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/shared.php';
+require_once __DIR__.'/history-retention.php';
 $db=acadDb();
+try { acadExpireDeletedHistory($db); } catch (Throwable $e) { error_log('Academic history retention: '.$e->getMessage()); }
 $stats=['pending'=>0,'approved'=>0,'rejected'=>0,'archived'=>0,'programs'=>0,'meetings'=>0];
 $recent=[];$error=null;
 try {

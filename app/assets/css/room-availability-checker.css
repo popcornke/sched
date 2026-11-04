@@ -576,3 +576,22 @@ body.bcp-ra-page {
 @media (prefers-reduced-motion: reduce) {
     .bcp-ra__header, .bcp-ra__panel { transition: none !important; animation: none !important; }
 }
+/* Inline room controls and self-contained relocation modal */
+.bcp-ra__room-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.bcp-ra__room-action{font:600 11px 'Plus Jakarta Sans',sans-serif;color:#193d76;border:1px solid #ccdaf0;background:#f7faff;border-radius:8px;padding:8px 10px;cursor:pointer}
+.bcp-ra__room-action:hover{background:#e7efff;border-color:#8eade3}
+.bcp-ra__room-action:focus-visible{outline:3px solid #84adff;outline-offset:2px}
+.bcp-ra__room-action:nth-child(1){color:#8c5314;background:#fff9ec;border-color:#ead4aa}
+.bcp-ra__room-action:nth-child(2){color:#9f3030;background:#fff6f6;border-color:#f0c3c3}
+.bcp-ra-modal[hidden]{display:none!important}
+.bcp-ra-modal{position:fixed;inset:0;background:rgba(13,30,60,.6);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
+.bcp-ra-modal__panel{width:min(1050px,100%);height:min(790px,92vh);background:white;border-radius:17px;box-shadow:0 20px 70px #0005;display:flex;flex-direction:column;overflow:hidden}
+.bcp-ra-modal__head{display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid #dce4ef;gap:15px}
+.bcp-ra-modal__head h2{margin:0;font-size:18px;color:#16366d}
+.bcp-ra-modal__head p{margin:4px 0 0;color:#64748b;font-size:12px}
+#raModalClose{font-size:27px;background:#f0f4fa;border:0;border-radius:9px;cursor:pointer;padding:2px 13px;color:#253958}
+#raRoomFrame{width:100%;flex:1;border:0;background:#f8fafc}
+@media(max-width:650px){.bcp-ra-modal{padding:5px}.bcp-ra-modal__panel{height:97vh}.bcp-ra__room-action{flex:1}}
+@media print{.bcp-ra__room-actions,.bcp-ra-modal{display:none!important}}
+/* Distinguish generated pending-approval room proposals from ACTIVE bookings. */
+.bcp-ra__state--provisional { color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; }

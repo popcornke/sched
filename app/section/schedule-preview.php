@@ -954,7 +954,22 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         
                         el("bcpActionDescription").textContent = replacementAvailable ? "Saved timetable is shown. You can create a replacement preview without changing the ACTIVE batch." : "Saved timetable is shown in read-only mode.";
                         el("bcpProgramNote").textContent = `ACTIVE batch #${saved.batch.batch_id} · ${saved.saved_meetings} stored meetings · read-only view.`;
-                        setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
+                        if (approvalRequest && ["APPROVED", "REJECTED"].includes(approvalRequest.status)) {
+                            const remarks = String(approvalRequest.reason || '').trim();
+                            const associatedBatch = Number(approvalRequest.batch_id || 0);
+                            const currentBatch = Number(saved.batch.batch_id);
+                            const matches = associatedBatch === currentBatch;
+                            if (matches || approvalRequest.status === "REJECTED") {
+                                const label = approvalRequest.status === "APPROVED" ? "Approval" : "Rejection";
+                                const message = `Academic Office ${label} · Request #${approvalRequest.request_id} · Remarks: ${remarks || 'No remarks entered.'}`;
+                                el("bcpActionDescription").textContent = message;
+                                setStatus(message, approvalRequest.status === "REJECTED" ? "error" : "info");
+                            } else {
+                                setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
+                            }
+                        } else {
+                            setStatus(`Loaded existing ${selectedProgram.program_code} timetable (batch #${saved.batch.batch_id}).`, "success");
+                        }
                     } else if (saved.status === "NO_SAVED_SCHEDULE") {
                         const eligible = selectedProgram.can_generate_demo === true;
                         generateButton.hidden = !eligible;

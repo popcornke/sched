@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/shared/auth.php';
 
 authRequire();
+// Room status administration and vacancy recommendations are available separately.
 
 /** Module 7 / DEMO: self-contained, read-only room availability viewer. */
 
@@ -40,7 +41,6 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 <body class="bcp-ra-page">
 
     <?php require_once __DIR__ . '/../../includes/sidebar.php'; ?>
-
     <div class="main">
         <div class="topbar">
             <button class="hamburger" id="hamburgerBtn" aria-label="Toggle sidebar">
@@ -65,16 +65,16 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     <div>
                         <p class="bcp-ra__eyebrow"><span class="bcp-ra__eyebrow-dot"></span> BCP CLASS SCHEDULING SYSTEM</p>
                         <h1>Room Availability Checker<span class="bcp-ra__title-dot">.</span></h1>
-                        <p>Find a suitable room using current saved timetable records. No room is reserved by a search.</p>
+                        <p>View approved class assignments in every room and check availability for a specific date/time. No room is reserved by a search.</p>
                     </div>
-                    <span class="bcp-ra__chip">READ-ONLY · DEMO</span>
+                    <span class="bcp-ra__chip">LIVE ROOM STATUS · DEMO</span>
                 </header>
 
                 <section class="bcp-ra__panel" aria-labelledby="raFiltersTitle">
                     <div class="bcp-ra__section-head">
                         <div>
                             <h2 id="raFiltersTitle">Find a room</h2>
-                            <p>Select a date and an actual time interval. Filters update automatically.</p>
+                            <p>Occupied reflects the selected date/time. Expand any room card to view ALL approved weekly section assignments, even outside that interval.</p>
                         </div>
                     </div>
 
@@ -121,7 +121,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                             <select id="raDisplay">
                                 <option value="ALL">All rooms</option>
                                 <option value="AVAILABLE">Available only</option>
-                                <option value="OCCUPIED">Occupied only</option>
+                                <option value="OCCUPIED">Occupied (approved) only</option>
+                                <option value="PROVISIONAL">Provisional (pending approval)</option>
                                 <option value="UNAVAILABLE">Unavailable / unconfigured</option>
                                 <option value="NOT_ELIGIBLE">Not eligible for request</option>
                             </select>
@@ -145,7 +146,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     <div class="bcp-ra__results-head">
                         <div>
                             <h2 id="raResultsTitle">Room availability</h2>
-                            <p id="raSubtitle">Select a date and time to view current occupancy.</p>
+                            <p id="raSubtitle">Current occupancy is time-based; approved weekly section assignments are always shown per room.</p>
                         </div>
                         <span class="bcp-ra__chip" id="raCount">—</span>
                     </div>
@@ -161,7 +162,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         <div class="bcp-ra__empty">Checking current room records…</div>
                     </div>
 
-                    <p class="bcp-ra__disclaimer">As-recorded availability only. Regular classes repeat by weekday; examination and saved special-class bookings use exact dates. This module does not verify approved teaching dates, holidays, cancelled classes, or unsaved previews. No database changes.</p>
+                    <p class="bcp-ra__disclaimer">As-recorded availability only. Regular classes repeat by weekday; examination and saved special-class bookings use exact dates. Pending Academic Office submissions appear as provisional; unsent previews are not included. This module does not verify teaching dates, holidays or cancelled classes. Room status changes are restricted to Admin and do not move existing bookings.</p>
                 </section>
             </div>
 
@@ -203,6 +204,15 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             </div>
         </main>
 
+        <?php if (($_SESSION['auth_role'] ?? $_SESSION['role'] ?? '') === 'ADMIN'): ?>
+        <div class="bcp-ra-modal" id="raRoomModal" role="dialog" aria-modal="true" aria-labelledby="raModalTitle" hidden>
+            <div class="bcp-ra-modal__panel">
+                <header class="bcp-ra-modal__head"><div><h2 id="raModalTitle">Room management</h2><p id="raModalDescription">Review affected classes and recommended rooms.</p></div><button type="button" id="raModalClose" aria-label="Close room management">&times;</button></header>
+                <iframe id="raRoomFrame" title="Room status and section relocation recommendations" loading="lazy"></iframe>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <div class="footer">
             Scheduling System &copy; <?= $dashboardDate->format('Y') ?> Bestlink College of the Philippines
         </div>
@@ -222,6 +232,29 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             }
 
             const $ = id => document.getElementById(id);
+            const modal = $('raRoomModal');
+            function closeRoomModal() {
+                if (!modal) return;
+                modal.hidden = true;
+                $('raRoomFrame').removeAttribute('src');
+                document.body.style.overflow = '';
+                check(); // Refresh status cards after a change inside the modal.
+            }
+            function openRoomModal(room, chosenStatus) {
+                if (!modal) return;
+                $('raModalTitle').textContent = room.room_name + ' — Room management';
+                $('raModalDescription').textContent = 'Affected sections and available replacement rooms for ' + room.room_name;
+                const params = new URLSearchParams({room_id: String(room.room_id), period_id: $('raPeriod').value, status: chosenStatus, embed: '1'});
+                $('raRoomFrame').src = 'room-management.php?' + params.toString();
+                modal.hidden = false;
+                document.body.style.overflow = 'hidden';
+                $('raModalClose').focus();
+            }
+            if (modal) {
+                $('raModalClose').addEventListener('click', closeRoomModal);
+                modal.addEventListener('click', (e) => { if (e.target === modal) closeRoomModal(); });
+                document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeRoomModal(); });
+            }
             let catalog = null,
                 report = null,
                 requestNo = 0,
@@ -416,6 +449,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                 const selection = $('raDisplay').value;
                 if (selection === 'AVAILABLE' && room.availability !== 'AVAILABLE') return false;
                 if (selection === 'OCCUPIED' && room.availability !== 'OCCUPIED') return false;
+                if (selection === 'PROVISIONAL' && room.availability !== 'PROVISIONAL') return false;
                 if (selection === 'UNAVAILABLE' && !['UNAVAILABLE', 'UNCONFIGURED'].includes(room.availability)) return false;
                 if (selection === 'NOT_ELIGIBLE' && room.availability !== 'NOT_ELIGIBLE') return false;
 
@@ -454,9 +488,53 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                     );
 
                     const availClass = 'bcp-ra__state bcp-ra__state--' + r.availability.toLowerCase();
-                    top.append(meta, el('span', r.availability.replaceAll('_', ' '), availClass));
+                    top.append(meta, el('span', r.availability === 'PROVISIONAL' ? 'PENDING APPROVAL' : r.availability.replaceAll('_', ' '), availClass));
                     card.append(top);
+                    <?php if (($_SESSION['auth_role'] ?? $_SESSION['role'] ?? '') === 'ADMIN'): ?>
+                    const controls = el('div', undefined, 'bcp-ra__room-actions');
+                    for (const [status, caption, icon] of [
+                        ['MAINTENANCE', 'Maintenance', 'fa-screwdriver-wrench'],
+                        ['UNAVAILABLE', 'Unavailable', 'fa-ban'],
+                        ['AVAILABLE', 'Set available', 'fa-circle-check']
+                    ]) {
+                        const btn = el('button', undefined, 'bcp-ra__room-action');
+                        btn.type = 'button';
+                        btn.append(el('i', undefined, `fa-solid ${icon}`), document.createTextNode(' ' + caption));
+                        btn.addEventListener('click', () => openRoomModal(r, status));
+                        controls.append(btn);
+                    }
+                    card.append(controls);
+                    <?php endif; ?>
 
+                    // Persisted timetable assignments are shown even when the room is currently free.
+                    // OCCUPIED remains strictly based on the selected weekday and time interval.
+                    if (r.weekly_assignments && r.weekly_assignments.length) {
+                        const detail = document.createElement('details');
+                        detail.className = 'bcp-ra__details';
+                        const sum = document.createElement('summary');
+                        const distinctSections = new Set(r.weekly_assignments.map(x => x.section_code));
+                        sum.textContent = `${distinctSections.size} assigned section(s) · ${r.weekly_assignments.length} approved weekly F2F meeting(s) — view schedule`;
+                        detail.append(sum);
+                        const ul = document.createElement('ul');
+                        for (const b of r.weekly_assignments) {
+                            ul.append(el('li', `${b.section_code} · ${b.subject_code} · ${b.day_of_week} ${b.start_time}–${b.end_time} · ${b.program_code} (batch #${b.batch_id})`));
+                        }
+                        detail.append(ul);
+                        card.append(detail);
+                    }
+                    if (r.pending_bookings && r.pending_bookings.length) {
+                        const detail = document.createElement('details');
+                        detail.className = 'bcp-ra__details';
+                        const sum = document.createElement('summary');
+                        sum.textContent = `${r.pending_bookings.length} proposed class meeting(s) — awaiting Academic Office approval`;
+                        detail.append(sum);
+                        const ul = document.createElement('ul');
+                        for (const b of r.pending_bookings) {
+                            ul.append(el('li', `Request #${b.reference_id} · ${b.program_code} · ${b.section_name || `section ID ${b.section_id}`} · ${b.start_time}–${b.end_time} (NOT YET SAVED AS ACTIVE)`));
+                        }
+                        detail.append(ul);
+                        card.append(detail);
+                    }
                     const notes = issueText(r);
                     if (notes) {
                         card.append(el('p', notes, 'bcp-ra__note'));
@@ -515,7 +593,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
                     $('raSubtitle').textContent = `${data.date} · ${data.day_of_week} · ${data.start_time}–${data.end_time} · ${data.period.academic_year}, Semester ${data.period.semester}`;
 
-                    status(`Checked ${data.summary.total} rooms. Available: ${data.summary.available}. Not reserved by this search.`);
+                    status(`Checked ${data.summary.total} rooms for ${data.day_of_week} ${data.start_time}–${data.end_time}. Expand a room to see ALL saved weekly assignments. Approved occupied now: ${data.summary.occupied}; awaiting approval: ${data.summary.provisional || 0}; available: ${data.summary.available}. Only approved schedules reserve rooms.`);
                     $('raPrint').disabled = false;
                     render();
                     if (notifyNextCheck) {

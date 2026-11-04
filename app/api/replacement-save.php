@@ -142,6 +142,12 @@ SQL);
         if (isset($subjectMap[$key])) { rgReject(422, 'DUPLICATE_SUBJECT_INPUT', 'Duplicate section-subject mapping.'); }
         $subjectMap[$key] = (int)$item['section_subject_id'];
     }
+    // Final room status lock; stops saving a stale preview after any room closure.
+    $roomStatusStmt = $pdo->query("SELECT room_id,status FROM rooms WHERE data_origin='DEMO' ORDER BY room_id FOR UPDATE");
+    $availableRooms = [];
+    foreach ($roomStatusStmt->fetchAll(PDO::FETCH_ASSOC) as $roomRow) {
+        if ($roomRow['status'] === 'AVAILABLE') { $availableRooms[(int)$roomRow['room_id']] = true; }
+    }
     $newMeetings = [];
     $unique = [];
     foreach ($result['assignments'] as $meeting) {
@@ -158,6 +164,13 @@ SQL);
         $unique[$uniqueKey] = true;
         $teacher = (int)$meeting['teacher_id'];
         $room = $meeting['room_id'] === null ? null : (int)$meeting['room_id'];
+        if ($mode === 'F2F' && ($room === null || !isset($availableRooms[$room]))) {
+            rgReject(409, 'ROOM_CLOSED', 'A selected room is unavailable or under maintenance. Regenerate the replacement preview.');
+        }
+        if ($mode === 'ONLINE' && $room !== null) {
+            rgReject(422, 'ONLINE_ROOM_INVALID', 'Online classes cannot reserve a physical room.');
+        }
+
         $day = (string)$meeting['day_of_week'];
         if (!in_array($day, ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], true)) {
             rgReject(422, 'INVALID_DAY', 'Invalid meeting day.');

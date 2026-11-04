@@ -50,11 +50,17 @@ try {
  $saved=$db->prepare("SELECT m.meeting_id,m.teacher_id,m.room_id,m.day_of_week,m.start_time,m.end_time,ss.section_id,ss.subject_id FROM schedule_meetings m JOIN schedule_batches b ON b.batch_id=m.batch_id JOIN section_subjects ss ON ss.section_subject_id=m.section_subject_id WHERE b.academic_period_id=? AND b.status='ACTIVE' FOR UPDATE");$saved->execute([(int)$r['academic_period_id']]);$existing=$saved->fetchAll(PDO::FETCH_ASSOC);
  if(count($existing)!==count($fresh['existing_meetings']))throw new RuntimeException('Other active schedules changed. Generate again.');
  $map=[];foreach($fresh['section_subjects'] as $sub){$k=(int)$sub['section_id'].':'.(int)$sub['subject_id'];if(isset($map[$k]))throw new RuntimeException('Duplicate section-subject mapping');$map[$k]=(int)$sub['section_subject_id'];}
+ // Lock all room statuses before approval: a room closed after generation cannot be saved.
+ $roomStatuses=$db->query("SELECT room_id,status FROM rooms WHERE data_origin='DEMO' ORDER BY room_id FOR UPDATE")->fetchAll(PDO::FETCH_KEY_PAIR);
+ $availableRoomIds=[];foreach($roomStatuses as $rid=>$rstatus){if($rstatus==='AVAILABLE')$availableRoomIds[(int)$rid]=true;}
  $meetings=[];$used=[];
  foreach($result['assignments'] as $m){
   $sec=(int)$m['section_id'];$sub=(int)$m['subject_id'];$k=$sec.':'.$sub;if(!isset($map[$k]))throw new RuntimeException('Invalid section-subject mapping');
   $mode=(string)$m['delivery_mode'];$day=(string)$m['day_of_week'];$teacher=(int)$m['teacher_id'];$room=$m['room_id']===null?null:(int)$m['room_id'];$start=minuteForApproval((string)$m['start_time']);$end=minuteForApproval((string)$m['end_time']);
   if($start>=$end)throw new RuntimeException('Invalid meeting interval');
+  if($mode==='F2F'&&($room===null||!isset($availableRoomIds[$room])))throw new RuntimeException('A selected classroom is now unavailable or under maintenance. Reject this request and regenerate the timetable.');
+  if($mode==='ONLINE'&&$room!==null)throw new RuntimeException('Online meetings must not reserve a classroom.');
+
   $unique=$map[$k].':'.$mode;if(isset($used[$unique]))throw new RuntimeException('Duplicate section meeting');$used[$unique]=true;
   foreach($existing as $old){if($day!==$old['day_of_week'])continue;$os=minuteForApproval((string)$old['start_time']);$oe=minuteForApproval((string)$old['end_time']);if($start>=$oe||$os>=$end)continue;
    if($teacher===(int)$old['teacher_id']||$sec===(int)$old['section_id']||$sub===(int)$old['subject_id']||($room!==null&&$old['room_id']!==null&&$room===(int)$old['room_id']))throw new RuntimeException('Conflict with existing timetable. No schedule saved.');

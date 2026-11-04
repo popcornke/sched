@@ -53,7 +53,7 @@ function rcDate(string $raw): DateTimeImmutable {
     return $date;
 }
 function rcAllowedDays(string $date): string { return rcDate($date)->format('l'); }
-function rcAssess(array $rooms, array $availability, array $slots, array $classes, array $exams, array $specials, int $start, int $end, int $programId, int $capacity, string $roomType): array {
+function rcAssess(array $rooms, array $availability, array $slots, array $classes, array $exams, array $specials, array $pending, array $weeklyAssignments, int $start, int $end, int $programId, int $capacity, string $roomType): array {
     $byRoom=[];
     foreach ($availability as $a) $byRoom[(int)$a['room_id']][]=$a;
     $slotWindows=[];
@@ -69,7 +69,17 @@ function rcAssess(array $rooms, array $availability, array $slots, array $classe
                 'start_time'=>substr((string)$event['start_time'],0,5),'end_time'=>substr((string)$event['end_time'],0,5)];
         }
     }
-    $result=[];$summary=['total'=>0,'available'=>0,'occupied'=>0,'unavailable'=>0,'unconfigured'=>0,'not_eligible'=>0];
+    $pendingByRoom=[];
+    foreach ($pending as $event) {
+        $id=(int)$event['room_id'];
+        if ($id<1 || !rcOverlaps($start,$end,rcMinutes((string)$event['start_time']),rcMinutes((string)$event['end_time']))) continue;
+        $pendingByRoom[$id][]=$event;
+    }
+    $weeklyByRoom=[];
+    foreach ($weeklyAssignments as $assignment) {
+        $weeklyByRoom[(int)$assignment['room_id']][]=$assignment;
+    }
+    $result=[];$summary=['total'=>0,'available'=>0,'occupied'=>0,'provisional'=>0,'unavailable'=>0,'unconfigured'=>0,'not_eligible'=>0];
     foreach ($rooms as $room) {
         $id=(int)$room['room_id'];$issues=[];$windows=[];$hasRule=false;
         $status=(string)$room['status'];
@@ -84,6 +94,8 @@ function rcAssess(array $rooms, array $availability, array $slots, array $classe
         if (!$hasRule) $issues[]=['type'=>'NO_AVAILABILITY_RECORD','message'=>'No availability record for this room, weekday and period.'];
         elseif (!rcCovered($start,$end,$windows)) $issues[]=['type'=>'OUTSIDE_ROOM_AVAILABILITY','message'=>'Requested interval is not fully covered by AVAILABLE room windows.'];
         $bookings=$events[$id]??[];
+        $pendingBookings=$pendingByRoom[$id]??[];
+        if ($pendingBookings) $issues[]=['type'=>'PENDING_APPROVAL','message'=>'Generated class timetable is awaiting Academic Office approval; room is not yet officially reserved.'];
         if ($bookings) $issues[]=['type'=>'ROOM_OCCUPIED','message'=>'An ACTIVE saved meeting overlaps this interval.'];
         $roomProgram=$room['program_id']===null?null:(int)$room['program_id'];
         $eligible=($programId===0 || $roomProgram===null || $roomProgram===$programId)
@@ -92,7 +104,7 @@ function rcAssess(array $rooms, array $availability, array $slots, array $classe
         if ($programId!==0 && $roomProgram!==null && $roomProgram!==$programId) $why[]='Room belongs to another program.';
         if ((int)$room['capacity']<$capacity) $why[]='Capacity below requested '.$capacity.'.';
         if ($roomType!=='' && $room['room_type']!==$roomType) $why[]='Room type does not match.';
-        $state=(!$timeEligible || !$hasRule || !rcCovered($start,$end,$windows))?'UNCONFIGURED':($status!=='AVAILABLE' || count(array_filter($issues,static fn($i)=>$i['type']==='ROOM_UNAVAILABLE_WINDOW'))>0?'UNAVAILABLE':($bookings?'OCCUPIED':'AVAILABLE'));
+        $state=(!$timeEligible || !$hasRule || !rcCovered($start,$end,$windows))?'UNCONFIGURED':($status!=='AVAILABLE' || count(array_filter($issues,static fn($i)=>$i['type']==='ROOM_UNAVAILABLE_WINDOW'))>0?'UNAVAILABLE':($bookings?'OCCUPIED':($pendingBookings?'PROVISIONAL':'AVAILABLE')));
         if (!$eligible) $state='NOT_ELIGIBLE';
         $summary['total']++;
         $summary[strtolower($state)]++;
@@ -100,7 +112,7 @@ function rcAssess(array $rooms, array $availability, array $slots, array $classe
             'program_id'=>$roomProgram,'program_code'=>$room['program_code']??null,
             'room_type'=>$room['room_type'],'capacity'=>(int)$room['capacity'],
             'room_status'=>$status,'availability'=>$state,'eligible_for_request'=>$eligible,
-            'bookings'=>$bookings,'issues'=>$issues,'eligibility_notes'=>$why];
+            'bookings'=>$bookings,'pending_bookings'=>$pendingBookings,'weekly_assignments'=>$weeklyByRoom[$id]??[],'issues'=>$issues,'eligibility_notes'=>$why];
     }
     usort($result, static fn($a,$b)=>strcmp($a['room_name'],$b['room_name']));
     return ['summary'=>$summary,'rooms'=>$result,'time_slot_covered'=>$timeEligible];
@@ -144,6 +156,22 @@ $slots=rcRows($db,"SELECT TIME_FORMAT(start_time,'%H:%i') AS start_time,TIME_FOR
         FROM schedule_meetings m JOIN schedule_batches b ON b.batch_id=m.batch_id
         JOIN programs p ON p.program_id=b.program_id
         WHERE b.academic_period_id=:period AND b.status='ACTIVE' AND m.day_of_week=:day AND m.room_id IS NOT NULL",$params);
+    // Whole-week overview: assigned sections from APPROVED ACTIVE class timetables.
+    // This is independent of the selected date/time: it MUST NOT change the occupancy count.
+    $weeklyAssignments=rcRows($db,"SELECT m.room_id,b.batch_id,p.program_code,
+            sec.section_code,s.subject_code,m.day_of_week,
+            TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+            TIME_FORMAT(m.end_time,'%H:%i') AS end_time
+        FROM schedule_meetings m
+        JOIN schedule_batches b ON b.batch_id=m.batch_id
+        JOIN programs p ON p.program_id=b.program_id
+        JOIN section_subjects ss ON ss.section_subject_id=m.section_subject_id
+        JOIN sections sec ON sec.section_id=ss.section_id
+        JOIN subjects s ON s.subject_id=ss.subject_id
+        WHERE b.academic_period_id=:period AND b.status='ACTIVE'
+          AND m.room_id IS NOT NULL AND m.delivery_mode='F2F'
+        ORDER BY sec.section_code,FIELD(m.day_of_week,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'),m.start_time",
+        ['period'=>$periodId]);
     // Exam meetings are dated rather than weekly recurring. ALL ACTIVE exam batches in period count.
     $exams=rcRows($db,"SELECT e.exam_meeting_id AS reference_id,e.room_id,p.program_code,
             TIME_FORMAT(e.start_time,'%H:%i') AS start_time,TIME_FORMAT(e.end_time,'%H:%i') AS end_time
@@ -158,11 +186,33 @@ $slots=rcRows($db,"SELECT TIME_FORMAT(start_time,'%H:%i') AS start_time,TIME_FOR
         JOIN programs p ON p.program_id=sc.program_id
         WHERE sc.academic_period_id=:period AND sc.status='ACTIVE' AND sm.status='SCHEDULED'
         AND sm.meeting_date=:date AND sm.room_id IS NOT NULL",['period'=>$periodId,'date'=>$dateStr]);
-    $report=rcAssess($rooms,$availability,$slots,$classes,$exams,$specials,$start,$end,$programId,$capacity,$type);
+    // Pending approval requests contain generated assignments but do NOT reserve rooms.
+    // Show them separately from confirmed ACTIVE meetings for visibility only.
+    $pending=[];
+    $previews=rcRows($db,"SELECT r.request_id,r.program_id,p.program_code,r.payload_json,r.payload_hash
+        FROM academic_preview_requests r JOIN programs p ON p.program_id=r.program_id
+        WHERE r.academic_period_id=:period AND r.status='PENDING_REVIEW'",['period'=>$periodId]);
+    $sectionNames=[];
+    foreach (rcRows($db,"SELECT section_id,section_code FROM sections WHERE academic_period_id=:period",['period'=>$periodId]) as $sec) $sectionNames[(int)$sec['section_id']]=(string)$sec['section_code'];
+    foreach ($previews as $pr) {
+        if (!hash_equals((string)$pr['payload_hash'],hash('sha256',(string)$pr['payload_json']))) continue;
+        try { $payload=json_decode((string)$pr['payload_json'],true,512,JSON_THROW_ON_ERROR); }
+        catch (JsonException $e) { continue; }
+        foreach (($payload['result']['assignments']??[]) as $assignment) {
+            if (!is_array($assignment) || ($assignment['delivery_mode']??'')!=='F2F' || ($assignment['day_of_week']??'')!==$day) continue;
+            $rid=filter_var($assignment['room_id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+            if ($rid===false || $rid===null) continue;
+            $a=(string)($assignment['start_time']??'');$b=(string)($assignment['end_time']??'');
+            if (!preg_match('/^\d{2}:\d{2}(?::\d{2})?$/D',$a) || !preg_match('/^\d{2}:\d{2}(?::\d{2})?$/D',$b)) continue;
+            $pending[]=['room_id'=>$rid,'reference_id'=>(int)$pr['request_id'],'program_code'=>(string)$pr['program_code'],
+                'section_id'=>(int)($assignment['section_id']??0),'section_name'=>$sectionNames[(int)($assignment['section_id']??0)]??'Unknown section','start_time'=>substr($a,0,5),'end_time'=>substr($b,0,5)];
+        }
+    }
+    $report=rcAssess($rooms,$availability,$slots,$classes,$exams,$specials,$pending,$weeklyAssignments,$start,$end,$programId,$capacity,$type);
     rcReply(200,['success'=>true,'status'=>'ROOM_AVAILABILITY_READY','period'=>$period,'date'=>$dateStr,'day_of_week'=>$day,
         'start_time'=>rcClock($start),'end_time'=>rcClock($end),'filters'=>['program_id'=>$programId,'minimum_capacity'=>$capacity,'room_type'=>$type],
         'summary'=>$report['summary'],'rooms'=>$report['rooms'],'time_slot_covered'=>$report['time_slot_covered'],
-        'coverage_note'=>'ACTIVE recurring class meetings are applied by weekday. This does not verify school calendar dates, cancellations, holidays or unsaved DEMO previews. No room is booked by this lookup.',
+        'coverage_note'=>'ACTIVE bookings are confirmed; PROVISIONAL means a generated timetable submitted to Academic Office but not yet approved. Unsubmitted browser-only previews are not stored or shown. No room is booked by this lookup.',
         'read_only'=>true]);
 } catch (RoomCheckException $e) {
     rcReply($e->http,['success'=>false,'status'=>$e->statusCode,'message'=>$e->getMessage()]);

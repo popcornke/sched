@@ -41,7 +41,7 @@ acadLayout('Preview Requests');
    <form method="post" action="preview-action.php" style="display:flex;flex:1;justify-content:flex-end;gap:9px;align-items:center;flex-wrap:wrap;margin:0">
     <input type="hidden" name="csrf_token" value="<?=acadH(authCsrf())?>">
     <input type="hidden" name="id" value="<?=(int)$id?>">
-    <input type="text" name="remarks" maxlength="3000" placeholder="Rejection reason (required when rejecting)" aria-label="Decision remarks" style="min-width:230px;flex:1;max-width:360px;padding:10px;border:1px solid #cfd9ea;border-radius:9px">
+    <input type="text" name="remarks" maxlength="3000" placeholder="Decision remarks (required when rejecting; saved with approval too)" aria-label="Decision remarks" style="min-width:230px;flex:1;max-width:360px;padding:10px;border:1px solid #cfd9ea;border-radius:9px">
     <button type="submit" name="decision" value="REJECTED" class="btn warn" onclick="return this.form.remarks.value.trim()?confirm('Reject this timetable? Admin must generate again.'): (alert('Enter a rejection reason first.'),false)">Reject</button>
     <button type="submit" name="decision" value="APPROVED" class="btn" onclick="return confirm('Approve and save this timetable?')">Approve &amp; Save</button>
    </form>

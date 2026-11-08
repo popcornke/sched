@@ -582,7 +582,8 @@ function authAdminPasswordState(
 function authRequire(
     bool $api = false,
     array $allowedRoles = ['ADMIN', 'SCHEDULER'],
-    bool $allowExpiredAdminPassword = false
+    bool $allowExpiredAdminPassword = false,
+    ?string $loginUrlOverride = null
 ): void {
     authNoCache();
 
@@ -630,7 +631,7 @@ function authRequire(
                 'reason' => $reason,
                 'message' => $message,
                 'login_url' =>
-                    authLoginUrl(),
+                    ($loginUrlOverride ?? authLoginUrl()),
             ]);
 
             exit;
@@ -655,8 +656,10 @@ function authRequire(
         ) {
             header(
                 'Location: '
-                . authSessionExpiredUrl(
-                    $reason
+                . (
+                    $loginUrlOverride !== null
+                        ? $loginUrlOverride . '?expired=1'
+                        : authSessionExpiredUrl($reason)
                 ),
                 true,
                 303
@@ -667,7 +670,7 @@ function authRequire(
 
         header(
             'Location: '
-            . authLoginUrl(),
+            . ($loginUrlOverride ?? authLoginUrl()),
             true,
             303
         );
@@ -712,7 +715,7 @@ function authRequire(
                         'SESSION_REVOKED'
                     ),
                 'login_url' =>
-                    authLoginUrl(),
+                    ($loginUrlOverride ?? authLoginUrl()),
             ]);
 
             exit;
@@ -720,8 +723,10 @@ function authRequire(
 
         header(
             'Location: '
-            . authSessionExpiredUrl(
-                'SESSION_REVOKED'
+            . (
+                $loginUrlOverride !== null
+                    ? $loginUrlOverride . '?revoked=1'
+                    : authSessionExpiredUrl('SESSION_REVOKED')
             ),
             true,
             303
@@ -732,7 +737,26 @@ function authRequire(
 
     $role = (string) $user['role'];
 
-    if (!in_array($role, $allowedRoles, true)) {
+    $roleAllowed = in_array($role, $allowedRoles, true);
+
+    /*
+     * SUPER_ADMIN inherits the existing ADMIN/SCHEDULER operational
+     * permissions so it can use the proven scheduling modules without
+     * duplicating scheduler logic. It does not automatically inherit
+     * STAFF, TEACHER, or ACADEMIC_OFFICE-only portals.
+     */
+    if (
+        !$roleAllowed
+        && $role === 'SUPER_ADMIN'
+        && (
+            in_array('ADMIN', $allowedRoles, true)
+            || in_array('SCHEDULER', $allowedRoles, true)
+        )
+    ) {
+        $roleAllowed = true;
+    }
+
+    if (!$roleAllowed) {
         if ($api) {
             http_response_code(403);
             header('Content-Type: application/json; charset=utf-8');

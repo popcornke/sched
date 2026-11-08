@@ -19,7 +19,13 @@ header("Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; bas
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 
 
-$dashboard = (($_SESSION['auth_role'] ?? '') === 'STAFF' ? 'app/staff/exams.php' : ((($_SESSION['auth_role'] ?? '') === 'ACADEMIC_OFFICE') ? 'app/academic-office/dashboard.php' : 'app/dashboard/dashboard.php'));
+$dashboard = (($_SESSION['auth_role'] ?? '') === 'SUPER_ADMIN'
+    ? 'app/super-admin/dashboard.php'
+    : ((($_SESSION['auth_role'] ?? '') === 'STAFF'
+        ? 'app/staff/exams.php'
+        : ((($_SESSION['auth_role'] ?? '') === 'ACADEMIC_OFFICE')
+            ? 'app/academic-office/dashboard.php'
+            : 'app/dashboard/dashboard.php'))));
 
 
 /*

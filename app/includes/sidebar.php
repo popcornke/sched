@@ -393,6 +393,8 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             <div class="brand-sub">General</div>
         </div>
 
+
+
         <div class="nav-group">
             <a href="<?= $APP_ROOT ?>dashboard/dashboard.php" class="sidebar-item <?= $ACTIVE_NAV === 'dashboard' ? 'active' : '' ?>" title="Dashboard">
                 <i class="fa-solid fa-gauge"></i>
@@ -529,13 +531,36 @@ $ACTIVE_NAV = $ACTIVE_NAV ?? '';
             </a>
         </div>
 
+        <?php if (($_SESSION['auth_role'] ?? '') === 'SUPER_ADMIN'): ?>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-brand sidebar-brand-2">
+            <div class="brand-title">Super Admin Control</div>
+            <div class="brand-sub">Accounts &amp; System</div>
+        </div>
+        <?php
+        $superNav = [
+            ['accounts', 'accounts.php', 'fa-users-gear', 'Account Management'],
+            ['audit', 'audit-logs.php', 'fa-clock-rotate-left', 'Audit Logs'],
+            ['reports', 'reports.php', 'fa-chart-column', 'Reports'],
+            ['backup', 'backup.php', 'fa-database', 'Database Backup'],
+        ];
+        foreach ($superNav as [$navKey, $navFile, $navIcon, $navLabel]): ?>
+        <div class="nav-group">
+            <a href="<?= $APP_ROOT ?>super-admin/<?= $navFile ?>" class="sidebar-item <?= $ACTIVE_NAV === 'sa_' . $navKey ? 'active' : '' ?>" title="<?= $navLabel ?>">
+                <i class="fa-solid <?= $navIcon ?>"></i>
+                <span><?= $navLabel ?></span>
+            </a>
+        </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+
         <!-- =====================================================
              LOGOUT
              ===================================================== -->
 <form
     method="POST"
     action="<?= htmlspecialchars(
-        authLogoutUrl(),
+        (($_SESSION['auth_role'] ?? '') === 'SUPER_ADMIN' ? $APP_ROOT . 'super-admin/logout.php' : authLogoutUrl()),
         ENT_QUOTES,
         'UTF-8'
     ) ?>"

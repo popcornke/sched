@@ -22,7 +22,7 @@ $APP_ROOT = '../../';
 $ACTIVE_NAV = 'exam_generator';
 
 // Safe variables for Topbar
-$role = (string) ($_SESSION['role'] ?? 'Admin');
+$role = (string) ($_SESSION['auth_role'] ?? $_SESSION['role'] ?? 'Admin');
 $username = trim((string) ($_SESSION['auth_username'] ?? $_SESSION['first_name'] ?? 'Admin'));
 $initial = strtoupper(substr($username !== '' ? $username : 'A', 0, 1));
 $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/shared/auth.php';
 require_once __DIR__ . '/app/shared/login-otp.php';
+require_once __DIR__ . '/app/shared/audit.php';
 
 authStart();
 authNoCache();
@@ -320,6 +321,7 @@ if (
                     );
 
 
+                auditAuthentication($db, 'LOGIN_BLOCKED', $user, 'Login blocked while account was locked.');
                 $error =
                     'Too many failed login attempts. '
                     . 'This account is temporarily locked.';
@@ -358,6 +360,7 @@ if (
                     !$passwordCorrect
                     || !$accountActive
                 ) {
+                    auditAuthentication($db, 'LOGIN_FAILED', $user, 'Password authentication failed or account inactive.');
 
                     /*
                      * Only active, existing accounts
@@ -617,8 +620,8 @@ if (
                      * pass email OTP verification.
                      */
                     // Only STAFF may authenticate with password alone.
-                    // ADMIN and SCHEDULER retain their existing email OTP workflow.
-                    if (in_array((string) $user['role'], ['STAFF', 'ACADEMIC_OFFICE'], true)) {
+                    // ADMIN, SCHEDULER, TEACHER and ACADEMIC_OFFICE require email OTP.
+                    if ((string) $user['role'] === 'STAFF') {
                         error_log('BCP auth v22: password_only_session_start');
                         session_regenerate_id(true);
                         $_SESSION = [];
@@ -629,7 +632,8 @@ if (
                         $_SESSION['auth_last_activity'] = time();
                         $_SESSION['auth_regenerated_at'] = time();
                         authCsrf();
-                        header('Location: ' . ((string)$user['role'] === 'ACADEMIC_OFFICE' ? 'app/academic-office/dashboard.php' : 'app/staff/exams.php'), true, 303);
+                        auditAuthentication($db, 'LOGIN_SUCCESS', $user, 'Staff signed in with password.');
+                        header('Location: app/staff/exams.php', true, 303);
                         exit;
                     }
 
@@ -683,6 +687,7 @@ if (
                         ) {
 
                             loginOtpClearPending();
+                            auditAuthentication($db, 'OTP_SEND_FAILED', $user, 'Unable to issue login OTP.');
 
                             $error =
                                 (string) (
@@ -690,6 +695,7 @@ if (
                                     ?? 'Unable to send the verification code.'
                                 );
                         } else {
+                            auditAuthentication($db, 'OTP_SENT', $user, 'Login OTP sent to authorized recipient.');
 
                             header(
                                 'Location: verify-login-otp.php',

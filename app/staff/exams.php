@@ -13,6 +13,7 @@ $user = htmlspecialchars((string)($_SESSION['auth_username'] ?? 'Staff'), ENT_QU
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Staff · Examination Matrix | BCP</title>
   <link rel="stylesheet" href="../assets/css/examsstaff.css">
+  <link rel="stylesheet" href="assets/css/room-schedules.css">
 </head>
 
 <body>
@@ -23,7 +24,8 @@ $user = htmlspecialchars((string)($_SESSION['auth_username'] ?? 'Staff'), ENT_QU
         <div><strong>BESTLINK COLLEGE</strong><small>STAFF WORKSPACE</small></div>
       </div>
       <div class="nav-caption">WORKSPACE</div>
-      <div class="nav-current"><span class="nav-icon">▦</span><span>Examination Timetable</span></div>
+      <a class="staff-nav-link active" href="exams.php" aria-current="page"><span class="nav-icon">▦</span><span>Examination Timetable</span></a>
+      <a class="staff-nav-link" href="room-schedules.php"><span class="nav-icon">▤</span><span>Room Schedules</span></a>
       <div class="sidebar-bottom"><span class="sidebar-readonly">● VIEW & PRINT ACCESS</span><form action="../../logout.php" method="post" class="sidebar-logout-form"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(authCsrf(), ENT_QUOTES, 'UTF-8') ?>"><button type="submit" class="sidebar-logout">↪ &nbsp; Sign out</button></form></div>
     </aside>
     <div class="staff-content">

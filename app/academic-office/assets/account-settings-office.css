@@ -1,0 +1,15 @@
+/* Academic Office Account Settings: reuse the official Academic Office shell. */
+.account-settings-page .layout { min-height:100vh; }
+.account-settings-page .acad-content { max-width:none; padding:0; margin:0; }
+.account-settings-page .account-settings { width:100%; max-width:1440px; padding:30px 34px 28px; }
+.account-settings-page .acad-topbar { height:72px; }
+.account-settings-page .acad-topbar .acad-avatar { text-decoration:none; display:grid; place-items:center; }
+.account-settings-page .account-settings__hero h1 { color:#162d55; }
+.account-settings-page .account-settings__hero h1 span { color:#3974dc; }
+.account-settings-page .account-settings__eyebrow { color:#2856a5; }
+.account-settings-page .account-card, .account-settings-page .account-panel { min-width:0; }
+.account-settings-page .account-form input { box-sizing:border-box; }
+.account-settings-page .account-submit { background:#2359b6; }
+.account-settings-page .account-submit:hover { background:#19468e; }
+.account-settings-page .account-alert { margin-top:0; }
+@media (max-width:760px) { .account-settings-page .account-settings {padding:20px 15px 26px;} }

@@ -1,0 +1,149 @@
+/* Reuse Staff workspace colors, typography, shell and controls. */
+.staff-nav-link{display:flex;align-items:center;gap:9px;padding:13px 12px;margin:3px 10px;border-radius:10px;color:#e4edff;text-decoration:none;font-size:12px;font-weight:700;border:1px solid transparent;transition:background .18s ease}
+.staff-nav-link:hover,.staff-nav-link:focus-visible{background:#ffffff1b;color:#fff}
+.staff-nav-link.active{background:#ffffff24;border-color:#ffffff18;color:#fff}
+.room-summary{font-size:12px;color:#526780;margin:17px 0 12px}
+.room-table-scroll{max-width:100%;overflow-x:auto;border:1px solid #d7e1f0;border-radius:11px}
+.room-matrix{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;min-width:870px;font-size:12px;color:#1a355c}
+.room-matrix th,.room-matrix td{border-right:1px solid #e1e8f3;border-bottom:1px solid #e1e8f3;padding:11px 9px;vertical-align:middle;text-align:center}
+.room-matrix tr:last-child>*{border-bottom:0}.room-matrix tr>*:last-child{border-right:0}
+.room-matrix thead th{background:#eaf1fb;color:#23487f;font-size:11px;font-weight:800;white-space:nowrap}
+.room-matrix .day-col{position:sticky;left:0;z-index:1;width:125px;min-width:125px;text-align:left;padding-left:16px;background:#f5f8fd;color:#1f3e6c;font-weight:800}
+.room-matrix thead .day-col{z-index:3;background:#eaf1fb}
+.room-matrix tbody tr{height:91px}.room-matrix td.empty{background:#fff;color:#b5c3d3}
+.room-matrix .meeting{background:#eef5ff;box-shadow:inset 0 0 0 1px #d5e3fa}
+.room-matrix .meeting.collision{background:#fff0ed;box-shadow:inset 0 0 0 1px #f1b7ab}
+.room-matrix .schedule-section{font-size:12px;font-weight:800;color:#183e86;line-height:1.4}
+.room-matrix .schedule-subject{font-size:11px;font-weight:600;line-height:1.35;color:#435b7b;margin-top:3px;overflow-wrap:anywhere}
+.room-matrix .schedule-time{font-size:10px;color:#627999;margin-top:5px}
+.room-matrix .collision-message{color:#ad392c;font-size:10px;font-weight:800;margin-bottom:5px}
+.room-footnote{font-size:11px;line-height:1.6;color:#72829a;margin:13px 0 0}
+@media(max-width:760px){.room-matrix{min-width:760px}.room-matrix .day-col{width:104px;min-width:104px;padding-left:9px}.room-matrix th,.room-matrix td{padding:8px 6px}}
+@media print{@page{size:A4 landscape;margin:9mm}.room-report{display:block!important}.room-table-scroll{overflow:visible;border:0}.room-matrix{min-width:0!important;font-size:8px}.room-matrix th,.room-matrix td{padding:5px 3px;border:1px solid #c5cbd5}.room-matrix .day-col{position:static;min-width:0;width:90px}.room-matrix .schedule-section{font-size:9px}.room-matrix .schedule-subject{font-size:8px}.room-matrix .schedule-time{font-size:7px}.room-matrix tbody tr{height:60px}.room-summary,.room-footnote{font-size:9px}.room-matrix td,.room-matrix th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* All owned rooms are displayed together under the selected department. */
+.department-room-list{display:grid;gap:22px;margin-top:15px}
+.department-room{border:1px solid #dbe4f2;border-radius:13px;background:#fff;overflow:hidden;break-inside:avoid}
+.department-room-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 17px;background:#f7faff}
+.department-room-heading h3{font-size:16px;margin:0 0 4px;color:#153b78}
+.department-room-heading p{font-size:11px;margin:0;color:#647890}
+.room-status{font-size:10px;font-weight:800;color:#1d6c53;background:#e5f5ee;border-radius:6px;padding:7px 10px;white-space:nowrap}
+.room-status.unavailable{background:#fff0ec;color:#b33d2d}.room-status.maintenance{background:#fff5dd;color:#906211}
+.department-room .room-table-scroll{border:0;border-top:1px solid #dbe4f2;border-radius:0}
+.empty-department{color:#647890;padding:16px}
+@media print{.department-room-list{gap:5mm}.department-room{break-inside:avoid;page-break-inside:avoid;border:1px solid #cbd5e1}.department-room-heading{padding:6px 9px}.department-room-heading h3{font-size:12px}.department-room-heading p{font-size:9px}.room-status{font-size:8px}.department-room .room-table-scroll{overflow:visible}}
+
+/* Two clear fixed-window timetables: 6AM–noon and noon–9PM. */
+.room-session{margin:0 0 17px;border-top:1px solid #e0e8f5}
+.room-session:last-child{margin-bottom:0}
+.session-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 15px;background:#f0f5ff;color:#153e86;font-size:13px}
+.session-heading span{font-weight:700;font-size:11px;color:#526c91}
+.afternoon-session .session-heading{background:#f6f7fc}
+.department-room .room-table-scroll{overflow-x:auto;max-width:100%}
+.room-matrix{table-layout:fixed;border-collapse:collapse;width:100%;min-width:0}
+.room-matrix .day-width{width:116px}
+.room-matrix th,.room-matrix td{border-right:1px solid #dee7f4;border-bottom:1px solid #dee7f4;padding:9px 5px}
+.room-matrix thead .hour-heading{font-size:10px;line-height:1.35;white-space:normal;padding:11px 3px;overflow-wrap:normal}
+.room-matrix .day-col{width:116px;min-width:116px;padding-left:13px}
+.room-matrix tbody tr{height:92px}
+.room-matrix .meeting{padding:8px 5px}
+.room-matrix .schedule-block{overflow-wrap:anywhere}
+.room-matrix .schedule-subject{font-size:10px}
+.room-matrix .schedule-time{font-size:9px;margin-top:6px;font-weight:700}
+.morning-matrix{min-width:690px}
+.afternoon-matrix{min-width:1010px}
+.room-matrix tbody tr:hover td.empty{background:#fafcff}
+@media(max-width:760px){.room-matrix .day-width{width:98px}.room-matrix .day-col{width:98px;min-width:98px}.morning-matrix{min-width:650px}.afternoon-matrix{min-width:980px}}
+@media print{
+ @page{size:A4 landscape;margin:8mm}
+ html,body{background:#fff!important}
+ .department-room-list{display:block!important}
+ .department-room{border:1px solid #cbd5e1!important;margin:0 0 9mm!important;break-inside:avoid;page-break-inside:avoid;overflow:visible!important}
+ .department-room-heading{padding:7px 10px!important}
+ .room-session{margin-bottom:4mm;break-inside:avoid;page-break-inside:avoid}
+ .session-heading{padding:5px 8px;font-size:11px}
+ .session-heading span{font-size:10px}
+ .department-room .room-table-scroll{overflow:visible!important}
+ .room-matrix,.morning-matrix,.afternoon-matrix{width:100%!important;min-width:0!important;table-layout:fixed!important}
+ .room-matrix .day-width{width:90px!important}
+ .room-matrix .day-col{position:static!important;width:90px!important;min-width:0!important;padding:5px!important}
+ .room-matrix thead .hour-heading{font-size:9px;white-space:normal;padding:6px 2px!important}
+ .room-matrix tbody tr{height:52px!important}
+ .room-matrix th,.room-matrix td{border:1px solid #cbd5e1!important;padding:4px 3px!important}
+ .room-matrix .schedule-section{font-size:9px;line-height:1.2}
+ .room-matrix .schedule-subject{font-size:8px;line-height:1.2}
+ .room-matrix .schedule-time{font-size:8px;margin-top:3px}
+ .department-room,.room-matrix td,.room-matrix th,.session-heading{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* Compact timetable: no Morning/Afternoon split and no globally empty time columns. */
+.compact-matrix{width:max(100%,calc(116px + var(--slots, 1) * 145px));table-layout:fixed;min-width:100%}
+.compact-matrix .time-heading{white-space:normal;overflow-wrap:normal;font-size:11px;line-height:1.4;padding:13px 7px;min-width:125px}
+.compact-matrix .day-width{width:116px}
+.compact-matrix tbody tr{height:84px}
+.compact-matrix .meeting{min-width:0}
+.empty-room{padding:19px 16px;color:#647890;font-size:12px;margin:0;border-top:1px solid #dbe4f2}
+@media(max-width:760px){.compact-matrix .day-width{width:98px}.compact-matrix .time-heading{min-width:125px}}
+@media print{
+ .compact-matrix{width:100%!important;min-width:0!important;table-layout:fixed!important}
+ .compact-matrix .day-width{width:80px!important}
+ .compact-matrix .time-heading{min-width:0!important;font-size:8px!important;padding:5px 2px!important;overflow-wrap:anywhere}
+ .compact-matrix tbody tr{height:52px!important}
+ .empty-room{padding:8px;font-size:9px}
+}
+
+/* Direct full-class intervals: one header/column per distinct start-end pair. */
+.direct-range-matrix{width:max(100%,calc(116px + var(--slots, 1) * 175px))}
+.direct-range-matrix .time-heading{min-width:0;white-space:normal;overflow-wrap:normal;line-height:1.35;padding:11px 6px}
+.direct-range-matrix .schedule-block+.schedule-block{border-top:1px solid #d7e3f7;margin-top:7px;padding-top:7px}
+@media(max-width:760px){.direct-range-matrix{width:max(100%,calc(98px + var(--slots, 1) * 165px))}}
+@media print{.direct-range-matrix{width:100%!important;min-width:0!important}.direct-range-matrix .time-heading{font-size:8px!important;line-height:1.2!important}}
+
+
+/* STAFF PRINT PATCH: two room timetables per A4 landscape sheet when content fits.
+   On screen the original one-room-per-card layout is preserved. */
+.room-print-sheet{display:contents}
+@media print {
+  @page {size:A4 landscape;margin:7mm}
+  .room-report{overflow:visible!important}
+  .room-summary{margin:2mm 0 3mm!important;font-size:8px!important}
+  .room-footnote{display:none!important}
+  .department-room-list{display:block!important;margin-top:2mm!important}
+  .room-print-sheet{
+    display:block!important;
+    break-after:page;
+    page-break-after:always;
+  }
+  .room-print-sheet:last-child{
+    break-after:auto;
+    page-break-after:auto;
+  }
+  .room-print-sheet .department-room{
+    display:block!important;
+    margin:0 0 4mm!important;
+    padding:0!important;
+    border:1px solid #cbd5e1!important;
+    break-inside:avoid!important;
+    page-break-inside:avoid!important;
+    box-shadow:none!important;
+  }
+  .room-print-sheet .department-room:last-child{margin-bottom:0!important}
+  .department-room-heading{padding:4px 8px!important;min-height:0!important}
+  .department-room-heading h3{font-size:11px!important;margin:0 0 2px!important}
+  .department-room-heading p{font-size:8px!important}
+  .room-status{font-size:7px!important;padding:3px 7px!important}
+  .room-matrix{font-size:7px!important;line-height:1.12!important}
+  .room-matrix thead .time-heading{font-size:7px!important;padding:4px 2px!important}
+  .room-matrix .day-col{font-size:8px!important;width:69px!important;padding:3px!important}
+  .compact-matrix .day-width{width:69px!important}
+  .room-matrix tbody tr{height:35px!important;max-height:none!important}
+  .room-matrix th,.room-matrix td{padding:2px 2px!important;line-height:1.1!important}
+  .room-matrix .schedule-section{font-size:8px!important;line-height:1.15!important}
+  .room-matrix .schedule-subject{font-size:7px!important;line-height:1.15!important;margin-top:1px!important}
+  .room-matrix .schedule-time{font-size:7px!important;line-height:1.1!important;margin-top:2px!important}
+  .direct-range-matrix .schedule-block+.schedule-block{margin-top:2px!important;padding-top:2px!important}
+  /* Keep long/high-density schedules intact; the browser may overflow onto
+     a separate sheet rather than clipping any class names or time ranges. */
+  .room-table-scroll,.department-room{overflow:visible!important}
+  .room-matrix,.direct-range-matrix{max-width:100%!important}
+}

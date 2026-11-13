@@ -90,3 +90,32 @@ function auditLog(
         return false;
     }
 }
+
+/** Authentication audit before the session is established. Only use a DB-resolved account. */
+function auditAuthentication(PDO $db, string $action, ?array $account, string $detail): bool
+{
+    $userId = (int) ($account['user_id'] ?? 0);
+    if ($userId <= 0) return false; // Do not expose whether unknown names exist.
+    try {
+        $stmt = $db->prepare('INSERT INTO system_audit_logs
+            (actor_user_id, actor_username_snapshot, actor_role_snapshot,
+             action_type, module, target_type, target_id, description, ip_address, user_agent)
+             VALUES (:id, :username, :role, :action, :module, :target_type, :target_id,
+                     :description, :ip, :agent)');
+        return $stmt->execute([
+            'id' => $userId,
+            'username' => substr((string) ($account['username'] ?? ''), 0, 80),
+            'role' => substr((string) ($account['role'] ?? ''), 0, 40),
+            'action' => substr($action, 0, 80),
+            'module' => 'AUTHENTICATION',
+            'target_type' => 'AUTH_USER',
+            'target_id' => (string) $userId,
+            'description' => $detail,
+            'ip' => auditClientIp(),
+            'agent' => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+        ]);
+    } catch (Throwable $e) {
+        error_log('BCP authentication audit failed: ' . $e->getMessage());
+        return false;
+    }
+}

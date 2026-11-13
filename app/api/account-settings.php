@@ -7,7 +7,7 @@ require_once dirname(__DIR__) . '/shared/mailer.php';
 
 authRequire(
     true,
-    ['ADMIN'],
+    ['ADMIN', 'ACADEMIC_OFFICE'],
     true
 );
 
@@ -171,7 +171,7 @@ function aasAccount(
             created_at
          FROM auth_users
          WHERE user_id = :user_id
-           AND role = "ADMIN"
+           AND role IN ("ADMIN", "ACADEMIC_OFFICE")
          LIMIT 1';
 
     if ($forUpdate) {
@@ -439,7 +439,7 @@ try {
             'UPDATE auth_users
              SET username = :username
              WHERE user_id = :user_id
-               AND role = "ADMIN"'
+               AND role IN ("ADMIN", "ACADEMIC_OFFICE")'
         );
 
         $update->execute([
@@ -1004,7 +1004,7 @@ try {
                     email = :email,
                     email_verified_at = NOW()
                  WHERE user_id = :user_id
-                   AND role = "ADMIN"'
+                   AND role IN ("ADMIN", "ACADEMIC_OFFICE")'
             );
 
             $updateUser->execute([
@@ -1265,7 +1265,7 @@ try {
                     failed_attempts = 0,
                     locked_until = NULL
                  WHERE user_id = :user_id
-                   AND role = "ADMIN"'
+                   AND role IN ("ADMIN", "ACADEMIC_OFFICE")'
             );
 
             $update->execute([
@@ -1337,7 +1337,7 @@ try {
                     'Password changed successfully. Your new 30-day security period has started.',
                 'redirect' =>
                     authBasePath()
-                    . '/app/dashboard/dashboard.php'
+                    . (($_SESSION['auth_role'] ?? '') === 'ACADEMIC_OFFICE' ? '/app/academic-office/dashboard.php' : '/app/dashboard/dashboard.php')
             ]
         );
     }

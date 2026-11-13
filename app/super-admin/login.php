@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/shared/auth.php';
 require_once dirname(__DIR__) . '/shared/audit.php';
+require_once dirname(__DIR__) . '/shared/login-otp.php';
 
 authStart();
 authNoCache();
@@ -41,7 +42,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         try {
             $db = authDb();
             $stmt = $db->prepare(
-                "SELECT user_id, username, password_hash, role, is_active
+                "SELECT user_id, username, email, email_verified_at, password_hash, role, is_active
                  FROM auth_users
                  WHERE username = :username AND role = 'SUPER_ADMIN'
                  LIMIT 1"
@@ -57,29 +58,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $active = is_array($user) && (int) ($user['is_active'] ?? 0) === 1;
 
             if (!$user || !$passwordOk || !$active) {
+                if (is_array($user)) auditAuthentication($db, 'LOGIN_FAILED', $user, 'Super Admin password authentication failed or account inactive.');
                 $error = 'Invalid username or password.';
             } else {
+                // Password verified; do not establish an authenticated session until OTP succeeds.
                 session_regenerate_id(true);
                 $_SESSION = [];
-                $_SESSION['auth_user_id'] = (int) $user['user_id'];
-                $_SESSION['auth_username'] = (string) $user['username'];
-                $_SESSION['auth_role'] = 'SUPER_ADMIN';
-                $_SESSION['auth_login_time'] = time();
-                $_SESSION['auth_last_activity'] = time();
-                $_SESSION['auth_regenerated_at'] = time();
                 authCsrf();
-
-                auditLog(
-                    $db,
-                    'LOGIN_SUCCESS',
-                    'SUPER_ADMIN_AUTH',
-                    'AUTH_USER',
-                    (string) $user['user_id'],
-                    'Super Administrator signed in.'
-                );
-
-                header('Location: dashboard.php', true, 303);
-                exit;
+                $user['email'] = $user['email'] ?? '';
+                $user['email_verified_at'] = $user['email_verified_at'] ?? null;
+                $result = loginOtpIssue($db, $user);
+                if (!($result['success'] ?? false)) {
+                    loginOtpClearPending();
+                    $error = (string) ($result['message'] ?? 'Unable to send verification code.');
+                    auditAuthentication($db, 'OTP_SEND_FAILED', $user, 'Super Admin login OTP could not be issued.');
+                } else {
+                    auditAuthentication($db, 'OTP_SENT', $user, 'Super Admin login OTP sent to configured security inbox.');
+                    header('Location: ../../verify-login-otp.php', true, 303);
+                    exit;
+                }
             }
         } catch (Throwable $e) {
             error_log('BCP super-admin login: ' . $e->getMessage());

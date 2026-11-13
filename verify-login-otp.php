@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/shared/auth.php';
 require_once __DIR__ . '/app/shared/login-otp.php';
+require_once __DIR__ . '/app/shared/audit.php';
 
 authStart();
 authNoCache();
@@ -68,9 +69,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             error_log('BCP login OTP cancel error: ' . $e->getMessage());
         }
 
+        $cancelDestination = (($_SESSION['login_2fa_role'] ?? '') === 'SUPER_ADMIN') ? 'app/super-admin/login.php' : 'index.php';
         loginOtpClearPending();
         session_regenerate_id(true);
-        header('Location: index.php', true, 303);
+        header('Location: ' . $cancelDestination, true, 303);
         exit;
     } elseif ($action === 'resend') {
         try {
@@ -85,7 +87,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                  FROM auth_users
                  WHERE user_id = :user
                    AND is_active = 1
-                   AND email_verified_at IS NOT NULL
+                   AND (email_verified_at IS NOT NULL OR role = \'SUPER_ADMIN\')
                  LIMIT 1'
             );
             $accountStmt->execute(['user' => $userId]);
@@ -184,6 +186,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             'otp' => $otpId,
                         ]);
                         $db->commit();
+                        $identity = $db->prepare('SELECT user_id, username, role FROM auth_users WHERE user_id = :id');
+                        $identity->execute(['id' => $userId]);
+                        auditAuthentication($db, 'OTP_FAILED', $identity->fetch(PDO::FETCH_ASSOC) ?: null, 'Incorrect login OTP submitted.');
 
                         $remaining = max(0, LOGIN_OTP_MAX_ATTEMPTS - $newAttempts);
                         $error = $remaining > 0
@@ -201,14 +206,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                              FROM auth_users
                              WHERE user_id = :user
                                AND is_active = 1
-                               AND email_verified_at IS NOT NULL
+                               AND (email_verified_at IS NOT NULL OR role = \'SUPER_ADMIN\')
                              LIMIT 1
                              FOR UPDATE'
                         );
                         $accountStmt->execute(['user' => $userId]);
                         $account = $accountStmt->fetch(PDO::FETCH_ASSOC);
 
-                        if (!$account) {
+                        if (!$account || (string) $account['role'] !== (string) ($_SESSION['login_2fa_role'] ?? '')) {
                             $db->rollBack();
                             loginOtpClearPending();
                             $error = 'This account is no longer available for login.';
@@ -225,6 +230,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                             $destination = loginOtpDestination((string) $account['role']);
                             loginOtpCompleteSession($account);
+                            auditAuthentication($db, 'LOGIN_SUCCESS', $account, 'Successful login after OTP verification.');
 
                             header('Location: ' . $destination, true, 303);
                             exit;

@@ -62,7 +62,7 @@ function authLogoutUrl(): string
 
 function authAccountUrl(): string
 {
-    return authBasePath() . '/app/auth/account.php';
+    return authBasePath() . (($_SESSION['auth_role'] ?? '') === 'ACADEMIC_OFFICE' ? '/app/academic-office/account.php' : '/app/auth/account.php');
 }
 
 
@@ -509,7 +509,7 @@ function authAdminPasswordState(
             END AS seconds_remaining
          FROM auth_users
          WHERE user_id = :user_id
-           AND role = "ADMIN"
+           AND role IN ("ADMIN", "ACADEMIC_OFFICE")
          LIMIT 1'
     );
 
@@ -797,7 +797,7 @@ function authRequire(
      * SCHEDULER and TEACHER accounts are not changed by this rule.
      * Teacher password state continues to use teacher_accounts.
      */
-    if ($role === 'ADMIN') {
+    if (in_array($role, ['ADMIN', 'ACADEMIC_OFFICE'], true)) {
         try {
             $passwordState = authAdminPasswordState(
                 $db,

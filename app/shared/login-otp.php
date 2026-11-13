@@ -9,6 +9,24 @@ const LOGIN_OTP_MAX_ATTEMPTS = 5;
 const LOGIN_OTP_RESEND_SECONDS = 60;
 const LOGIN_OTP_MAX_SENDS_PER_HOUR = 5;
 
+/**
+ * Local BCP deployment: Admin and Academic Office share a dedicated OTP inbox.
+ * This does not change auth_users.email, account verification, or other email flows.
+ * IMPORTANT: Whoever controls this inbox receives 2FA codes for both roles.
+ * Set BCP_SHARED_LOGIN_OTP_EMAIL in the web server environment to override.
+ */
+function loginOtpRecipient(string $role, string $registeredEmail): string
+{
+    if (in_array($role, ['ADMIN', 'ACADEMIC_OFFICE', 'SUPER_ADMIN'], true)) {
+        $configured = function_exists('bcpEnv')
+            ? bcpEnv('BCP_SHARED_LOGIN_OTP_EMAIL')
+            : '';
+        return $configured !== '' ? $configured : 'gptf135@gmail.com';
+    }
+
+    return $registeredEmail;
+}
+
 function loginOtpSecret(): string
 {
     $secret = trim((string) getenv('OTP_SECRET'));
@@ -68,6 +86,14 @@ function loginOtpPending(): bool
 
 function loginOtpDestination(string $role): string
 {
+    if ($role === 'SUPER_ADMIN') {
+        return 'app/super-admin/dashboard.php';
+    }
+
+    if ($role === 'ACADEMIC_OFFICE') {
+        return 'app/academic-office/dashboard.php';
+    }
+
     return $role === 'TEACHER'
         ? 'app/teacher/teacher-dashboard.php'
         : 'app/dashboard/dashboard.php';
@@ -118,13 +144,21 @@ function loginOtpIssue(PDO $db, array $user): array
     if (
         $userId <= 0
         || $username === ''
-        || !in_array($role, ['ADMIN', 'SCHEDULER', 'TEACHER'], true)
-        || !filter_var($email, FILTER_VALIDATE_EMAIL)
-        || $emailVerifiedAt === null
+        || !in_array($role, ['ADMIN', 'SCHEDULER', 'TEACHER', 'ACADEMIC_OFFICE', 'SUPER_ADMIN'], true)
+        || ($role !== 'SUPER_ADMIN' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || $emailVerifiedAt === null))
     ) {
         return [
             'success' => false,
             'message' => 'This account does not have a verified email address.',
+        ];
+    }
+
+    $recipient = loginOtpRecipient($role, $email);
+    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        error_log('BCP login OTP: configured recipient email is invalid.');
+        return [
+            'success' => false,
+            'message' => 'OTP recipient configuration is invalid. Contact the administrator.',
         ];
     }
 
@@ -185,7 +219,7 @@ function loginOtpIssue(PDO $db, array $user): array
     }
 
     $sent = bcpSendLoginOtp(
-        $email,
+        $recipient,
         $username,
         $otp,
         LOGIN_OTP_EXPIRY_MINUTES,
@@ -213,7 +247,7 @@ function loginOtpIssue(PDO $db, array $user): array
     $_SESSION['login_2fa_username'] = $username;
     $_SESSION['login_2fa_role'] = $role;
     $_SESSION['login_2fa_otp_id'] = $otpId;
-    $_SESSION['login_2fa_email_masked'] = loginOtpMaskEmail($email);
+    $_SESSION['login_2fa_email_masked'] = loginOtpMaskEmail($recipient);
     $_SESSION['login_2fa_sent_at'] = time();
     $_SESSION['login_2fa_started_at'] = (int) ($_SESSION['login_2fa_started_at'] ?? time());
 

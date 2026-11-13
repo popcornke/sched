@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/shared/auth.php';
+require_once dirname(__DIR__) . '/shared/audit.php';
 
 authStart();
 authNoCache();
@@ -106,6 +107,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 && password_verify($password, (string)$user['password_hash']);
 
             if (!$valid) {
+                if ($user) auditAuthentication($db, 'LOGIN_FAILED', $user, 'Teacher login credentials rejected or account unavailable.');
                 if ($user && (int)$user['is_locked'] !== 1) {
                     $failed = $db->prepare(
                         "UPDATE auth_users
@@ -154,6 +156,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $_SESSION['teacher_must_change_password'] = (int)$user['must_change_password'] === 1 ? 1 : 0;
 
                 authCsrf();
+                auditAuthentication($db, 'LOGIN_SUCCESS', $user, 'Teacher signed in with password.');
 
                 header(
                     'Location: ' . ((int)$user['must_change_password'] === 1

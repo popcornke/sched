@@ -87,7 +87,7 @@ function saAuditQuery(array $extra = []): string
 saPageStart('Audit Logs', 'audit');
 ?>
 <header class="sa-page-head">
-    <div><span class="sa-eyebrow">TRACEABILITY</span><h1>System audit logs.</h1><p>Search recorded control actions by actor, module, action, target, or date.</p></div>
+    <div><span class="sa-eyebrow">TRACEABILITY</span><h1>System audit logs.</h1><p>Review account sign-ins, failed logins, OTP attempts, logouts, and system actions by actor, role, module, or date.</p></div>
     <div class="sa-actions"><a class="sa-btn sa-btn--light" href="reports.php?type=audit_logs"><i class="fa-solid fa-file-export"></i>Export audit report</a></div>
 </header>
 

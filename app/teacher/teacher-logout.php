@@ -25,5 +25,5 @@ if (isset($_SESSION['auth_user_id'])) {
 }
 authClear();
 header('Clear-Site-Data: "cache"');
-header('Location: /sched/app/teacher/teacher-login.php', true, 303);
+header('Location: ' . authBasePath() . '/app/teacher/teacher-login.php', true, 303);
 exit;

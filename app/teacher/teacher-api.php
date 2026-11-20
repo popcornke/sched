@@ -24,6 +24,26 @@ function tpRows(PDO $db, string $sql, array $params = []): array
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/**
+ * Auxiliary teacher panels are independent of the core teaching timetable.
+ * Missing optional module tables on an older deployment must not take down
+ * the entire read-only teacher portal. Keep details in server logs only.
+ */
+function tpOptionalRows(PDO $db, string $module, string $sql, array $params = []): array
+{
+    try {
+        return tpRows($db, $sql, $params);
+    } catch (PDOException $e) {
+        $mysqlCode = (int)($e->errorInfo[1] ?? 0);
+        // 1146: table absent; 1054: column absent. Other failures remain fatal.
+        if (!in_array($mysqlCode, [1146, 1054], true)) {
+            throw $e;
+        }
+        error_log('BCP teacher portal optional module [' . $module . '] unavailable: ' . $e->getMessage());
+        return [];
+    }
+}
+
 function tpOne(PDO $db, string $sql, array $params = []): ?array
 {
     $rows = tpRows($db, $sql, $params);
@@ -63,7 +83,6 @@ try {
             t.max_daily_hours,
             t.max_weekly_hours,
             t.status AS teacher_status,
-            t.data_origin,
             p.program_id,
             p.program_code,
             p.program_name
@@ -176,7 +195,7 @@ try {
         }
     }
 
-    $availability = tpRows($db, "
+    $availability = tpOptionalRows($db, 'availability', "
         SELECT day_of_week,
                TIME_FORMAT(start_time, '%H:%i') AS start_time,
                TIME_FORMAT(end_time, '%H:%i') AS end_time,
@@ -186,7 +205,7 @@ try {
         ORDER BY FIELD(day_of_week,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'), start_time
     ", $params);
 
-    $examDuties = tpRows($db, "
+    $examDuties = tpOptionalRows($db, 'exam duties', "
         SELECT
             em.exam_meeting_id,
             eb.exam_batch_id,
@@ -211,7 +230,7 @@ try {
         ORDER BY em.exam_date, em.start_time
     ", $params);
 
-    $substituteDuties = tpRows($db, "
+    $substituteDuties = tpOptionalRows($db, 'substitute duties', "
         SELECT
             sa.substitute_assignment_id,
             sa.duty_date,
@@ -238,7 +257,7 @@ try {
         ORDER BY sa.duty_date, m.start_time
     ", $params);
 
-    $specialClasses = tpRows($db, "
+    $specialClasses = tpOptionalRows($db, 'special classes', "
         SELECT
             scm.special_meeting_id,
             scm.meeting_date,

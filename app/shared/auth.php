@@ -735,6 +735,23 @@ function authRequire(
         exit;
     }
 
+    if ((string)$user['role'] === 'SUPER_ADMIN') {
+        $lockStmt = $db->prepare('SELECT GREATEST(0,TIMESTAMPDIFF(SECOND,NOW(),locked_until)) AS remaining, UNIX_TIMESTAMP(locked_until) AS deadline FROM auth_users WHERE user_id=:id');
+        $lockStmt->execute(['id'=>(int)$_SESSION['auth_user_id']]);
+        $lockInfo = $lockStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ((int)($lockInfo['remaining'] ?? 0) > 0) {
+            authClear();
+            if ($api) {
+                http_response_code(423);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success'=>false,'message'=>'Account locked for 15 minutes.','status'=>'BACKUP_SECURITY_LOCKOUT']);
+            } else {
+                header('Location: ' . authBasePath() . '/app/super-admin/login.php?backup_locked=1&until=' . (int)($lockInfo['deadline'] ?? 0), true, 303);
+            }
+            exit;
+        }
+    }
+
     $role = (string) $user['role'];
 
     $roleAllowed = in_array($role, $allowedRoles, true);
@@ -881,6 +898,10 @@ function authRequire(
             $_SESSION['auth_password_days_remaining']
         );
     }
+
+    // Register audit coverage only after authentication, role and security checks.
+    require_once __DIR__ . '/audit.php';
+    auditTrackOperationalRequest($db);
 
     if (
         time() - (int) (

@@ -11,4 +11,10 @@ function acadExpireDeletedHistory(PDO $db): void {
         WHERE deleted_at IS NOT NULL AND purged_at IS NULL
           AND deleted_at <= DATE_SUB(NOW(), INTERVAL 15 DAY)
           AND status IN ('APPROVED', 'REJECTED')");
+    // Exam decisions have their own history metadata (migration 030).
+    $db->exec("UPDATE academic_exam_requests
+        SET purged_at = NOW(), purged_by = NULL
+        WHERE deleted_at IS NOT NULL AND purged_at IS NULL
+          AND deleted_at <= DATE_SUB(NOW(), INTERVAL 15 DAY)
+          AND status IN ('APPROVED', 'REJECTED')");
 }

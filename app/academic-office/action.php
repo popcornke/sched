@@ -27,5 +27,5 @@ if($decision==='APPROVED'){
  $up=$db->prepare("UPDATE academic_approval_requests SET status='RETURNED',reviewed_by=?,reviewed_at=NOW(),reviewer_remarks=? WHERE approval_id=?");$up->execute([$actor,$remarks,$id]);
  acadLog($db,$id,$actor,'RETURNED',$remarks);
 }
-$db->commit();header('Location: review.php?id='.$id,true,303);exit;
+$db->commit();auditLog($db, $decision==='APPROVED'?'SCHEDULE_PUBLISHED':'SCHEDULE_RETURNED', 'ACADEMIC_APPROVAL', 'APPROVAL_REQUEST', (string)$id, 'Academic Office publication decision committed.', ['decision'=>$decision,'schedule_type'=>$type]);header('Location: review.php?id='.$id,true,303);exit;
 }catch(Throwable $e){if($db->inTransaction())$db->rollBack();error_log('Academic approval: '.$e->getMessage());http_response_code(409);echo '<h1>Decision could not be completed</h1><p>'.acadH($e->getMessage()).'</p><a href="review.php?id='.(int)$id.'">Back to review</a>';}

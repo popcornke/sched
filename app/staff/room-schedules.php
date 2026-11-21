@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/shared/auth.php';
 authRequire(false, ['STAFF']);
+require_once dirname(__DIR__) . '/shared/audit.php';
+auditLog(authDb(), 'ROOM_SCHEDULES_VIEWED', 'STAFF', 'PAGE', 'room-schedules.php', 'Staff opened read-only schedule viewer.');
 $username = (string)($_SESSION['auth_username'] ?? 'Staff');
 $esc = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 ?>

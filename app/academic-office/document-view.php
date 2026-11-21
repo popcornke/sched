@@ -41,7 +41,7 @@ foreach($meetings as $m){
 ksort($groups,SORT_NATURAL);
 function tm(?string $time):string{if(!$time)return '—';$t=strtotime('2000-01-01 '.$time);return $t?date('g:i A',$t):'—';}
 function spanTime(?array $m):string{return $m?tm($m['start']).' – '.tm($m['end']):'—';}
-if(($_GET['embedded']??'')==='1'){echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Official Schedule Review</title><link rel="stylesheet" href="assets/office.css"></head><body class="embedded-document"><main class="embedded-document-main">';}else{acadLayout('View Approved / Rejected Schedule');}
+if(($_GET['embedded']??'')==='1'){echo '<!doctype html><html><head><link rel="icon" type="image/png" href="../assets/images/BCP_LOGO.png?v=20261121b"><link rel="shortcut icon" type="image/png" href="../assets/images/BCP_LOGO.png?v=20261121b"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Official Schedule Review</title><link rel="stylesheet" href="assets/office.css"></head><body class="embedded-document"><main class="embedded-document-main">';}else{acadLayout('View Approved / Rejected Schedule');}
 if(($_GET['embedded']??'')!=='1')echo '<div class="actions no-print"><a class="btn secondary" href="history.php">← Back to Approval History</a><button type="button" onclick="window.print()">Print / Save as PDF</button></div>'; 
 echo '<h1>Official-Format Schedule Preview</h1><p>Read-only display of the submitted timetable · Request #'.(int)$id.' · '.acadH($r['status']).'. Read-only. Use the browser print dialog to save as PDF.</p>';
 echo '<div class="acad-document-list">';

@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/shared/auth.php';
 require_once dirname(__DIR__) . '/shared/notifications.php';
 
-authRequire(true, ['ADMIN', 'SCHEDULER']);
+authRequire(true, ['ADMIN', 'SCHEDULER', 'ACADEMIC_OFFICE', 'SUPER_ADMIN']);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, private');
@@ -93,6 +93,9 @@ try {
     $action = strtolower(trim((string) ($request['action'] ?? '')));
 
     if ($action === 'create') {
+        if (in_array((string)($_SESSION['auth_role'] ?? ''), ['ACADEMIC_OFFICE', 'SUPER_ADMIN'], true)) {
+            notificationReply(403, ['success' => false, 'message' => 'Only trusted server events can create notifications for this role.']);
+        }
         $item = notificationCreate(
             $pdo,
             $userId,

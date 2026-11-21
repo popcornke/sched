@@ -80,6 +80,9 @@ try {
     $held=true;
 
     $pdo->beginTransaction();
+    $waiting=$pdo->prepare("SELECT request_id FROM academic_exam_requests WHERE academic_period_id=? AND status='PENDING_REVIEW' LIMIT 1 FOR UPDATE");
+    $waiting->execute([(int)$periodId]);
+    if($waiting->fetchColumn())exFail(409,'EXAM_PENDING_APPROVAL','Unified exam dates cannot be changed while an Academic Office exam approval is pending.');
 
     // Lock all ACTIVE exam batches so a calendar date change and its saved
     // timetables are updated atomically. Room/proctor/time assignments are preserved.

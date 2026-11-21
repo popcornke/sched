@@ -1128,6 +1128,23 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
                         throw new Error(result.message || "Generated timetable failed required preview checks.");
                     }
 
+                    // Log the successful audited preview using the authenticated Admin session.
+                    // Audit failures must not hide a valid, unsaved preview from the user.
+                    if (result.save_ready_demo === true && typeof result.save_token === "string") {
+                        try {
+                            const audited = await getJson("../api/audit-class-generation.php", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    save_token: result.save_token,
+                                    csrf_token: <?=json_encode(authCsrf())?>
+                                })
+                            });
+                            if (audited.success !== true) console.warn("Generation audit was not saved");
+                        } catch (auditError) {
+                            console.warn("Could not record generation audit", auditError);
+                        }
+                    }
                     clearResourceDiagnosis();
                     showAssignments(result.assignments);
                     showSummary(result.sections, `${result.returned_meetings} / ${result.required_meetings}`, "PASSED", `${Number(result.solve_seconds).toFixed(1)}s`, "Unsaved preview", "OR-Tools time");

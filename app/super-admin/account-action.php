@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/shared.php';
+require_once dirname(__DIR__) . '/shared/notifications.php';
 saRequire();
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
@@ -21,6 +22,20 @@ $roles = ['SUPER_ADMIN', 'ADMIN', 'SCHEDULER', 'ACADEMIC_OFFICE', 'STAFF', 'TEAC
 $hasEmail = saColumnExists($db, 'auth_users', 'email');
 $hasVerified = saColumnExists($db, 'auth_users', 'email_verified_at');
 $hasPasswordChanged = saColumnExists($db, 'auth_users', 'password_changed_at');
+
+/** Notify only after a successful DB mutation; never send credentials. */
+function saAccountNotify(PDO $db, int $actorId, int $targetId, string $title, string $message): void
+{
+    $recipients = array_unique(array_filter([$actorId, $targetId], static fn($id) => $id > 0));
+    foreach ($recipients as $recipient) {
+        try {
+            notificationCreate($db, (int) $recipient, $title, $message, 'info', (int) $recipient === $actorId ? authBasePath() . '/app/super-admin/accounts.php' : null);
+        } catch (Throwable $error) {
+            error_log('Account management notification failed: ' . $error->getMessage());
+        }
+    }
+}
+
 
 try {
     if ($action === 'create') {
@@ -63,6 +78,7 @@ try {
         $stmt->execute($params);
         $newId = (int) $db->lastInsertId();
         auditLog($db, 'ACCOUNT_CREATED', 'ACCOUNT_MANAGEMENT', 'AUTH_USER', (string) $newId, 'Created account ' . $username . ' with role ' . $role . '.', ['role' => $role]);
+        saAccountNotify($db, $currentUserId, $newId, 'Account created', 'A new ' . $role . ' account was created: ' . $username . '.');
         saFlash('success', 'Account created successfully.');
     } elseif ($action === 'update') {
         $userId = (int) ($_POST['user_id'] ?? 0);
@@ -100,6 +116,7 @@ try {
         $stmt->execute($params);
         if ($userId === $currentUserId) $_SESSION['auth_username'] = $username;
         auditLog($db, 'ACCOUNT_UPDATED', 'ACCOUNT_MANAGEMENT', 'AUTH_USER', (string) $userId, 'Updated account ' . $username . '.', ['role' => $role, 'password_reset' => $password !== '']);
+        saAccountNotify($db, $currentUserId, $userId, 'Account updated', 'Account settings were updated for ' . $username . '.');
         saFlash('success', 'Account updated successfully.');
     } elseif ($action === 'toggle') {
         $userId = (int) ($_POST['user_id'] ?? 0);
@@ -114,6 +131,7 @@ try {
         $stmt = $db->prepare('UPDATE auth_users SET is_active = :state, failed_attempts = 0, locked_until = NULL WHERE user_id = :id');
         $stmt->execute(['state' => $newState, 'id' => $userId]);
         auditLog($db, $newState ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_DEACTIVATED', 'ACCOUNT_MANAGEMENT', 'AUTH_USER', (string) $userId, ($newState ? 'Activated ' : 'Deactivated ') . (string) $account['username'] . '.');
+        saAccountNotify($db, $currentUserId, $userId, $newState ? 'Account activated' : 'Account deactivated', 'Account status changed for ' . (string) $account['username'] . '.');
         saFlash('success', $newState ? 'Account activated.' : 'Account deactivated.');
     } elseif ($action === 'delete') {
         $userId = (int) ($_POST['user_id'] ?? 0);
@@ -128,6 +146,7 @@ try {
         $stmt = $db->prepare('DELETE FROM auth_users WHERE user_id = :id');
         $stmt->execute(['id' => $userId]);
         auditLog($db, 'ACCOUNT_DELETED', 'ACCOUNT_MANAGEMENT', 'AUTH_USER', (string) $userId, 'Deleted unused account ' . (string) $account['username'] . '.', ['deleted_role' => $account['role']]);
+        saAccountNotify($db, $currentUserId, 0, 'Account deleted', 'An unused account was deleted: ' . (string) $account['username'] . '.');
         saFlash('success', 'Unused account deleted permanently.');
     } else {
         throw new RuntimeException('Unknown account action.');

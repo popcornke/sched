@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__).'/shared/auth.php';
+require_once dirname(__DIR__).'/shared/academic-notifications.php';
 header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store');
 function failRequest(int $code,string $message): never {http_response_code($code);echo json_encode(['success'=>false,'message'=>$message]);exit;}
 authRequire(false,['ADMIN']);
@@ -9,6 +10,11 @@ $body=json_decode(file_get_contents('php://input'),true);
 if(!is_array($body)||!is_string($body['save_token']??null)||!authCsrfValid($body['csrf_token']??null))failRequest(403,'Invalid session or CSRF token');
 // Read the authenticated user BEFORE switching to the separate solver preview session.
 $adminId=(int)$_SESSION['auth_user_id'];
+$verifiedActor = [
+    'auth_user_id' => $adminId,
+    'auth_username' => (string)($_SESSION['auth_username'] ?? ''),
+    'auth_role' => (string)($_SESSION['auth_role'] ?? ''),
+];
 session_write_close();
 // PHP retains the BCP_AUTH session ID after session_write_close().
 // Explicitly select the separate scheduling-preview cookie rather than relying
@@ -36,6 +42,6 @@ try{$db=authDb();$db->beginTransaction();$p=(int)$program['program_id'];$a=(int)
 $active=$db->prepare("SELECT batch_id FROM schedule_batches WHERE program_id=? AND academic_period_id=? AND status='ACTIVE' LIMIT 1 FOR UPDATE");$active->execute([$p,$a]);if($active->fetch())throw new RuntimeException('This program already has an active schedule. Use its existing replacement workflow.');
 $last=$db->prepare('SELECT request_id,status FROM academic_preview_requests WHERE program_id=? AND academic_period_id=? ORDER BY request_id DESC LIMIT 1 FOR UPDATE');$last->execute([$p,$a]);$previous=$last->fetch();if($previous&&$previous['status']==='PENDING_REVIEW')throw new RuntimeException('There is already a pending Academic Office request for this program.');
 $payload=json_encode($preview,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
-$q=$db->prepare('INSERT INTO academic_preview_requests (academic_period_id,program_id,submitted_by,payload_json,payload_hash,input_hash) VALUES(?,?,?,?,?,?)');$q->execute([$a,$p,$adminId,$payload,hash('sha256',$payload),(string)$preview['input_hash']]);$id=(int)$db->lastInsertId();$db->commit();
+$q=$db->prepare('INSERT INTO academic_preview_requests (academic_period_id,program_id,submitted_by,payload_json,payload_hash,input_hash) VALUES(?,?,?,?,?,?)');$q->execute([$a,$p,$adminId,$payload,hash('sha256',$payload),(string)$preview['input_hash']]);$id=(int)$db->lastInsertId();$db->commit();academicNotifyReviewers($db, 'CLASS', $id, (string)($program['program_code'] ?? 'Class timetable'));auditLog($db,'CLASS_REQUEST_SUBMITTED','CLASS_SCHEDULING','CLASS_REQUEST',(string)$id,'Class timetable submitted for Academic Office review.',['program_id'=>$p,'period_id'=>$a],$verifiedActor);
 echo json_encode(['success'=>true,'request_id'=>$id,'status'=>'PENDING_REVIEW','message'=>'Preview sent to Academic Office. No schedule batch or meetings have been saved.']);
 }catch(Throwable $e){if(isset($db)&&$db->inTransaction())$db->rollBack();failRequest(409,$e->getMessage());}

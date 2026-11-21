@@ -228,6 +228,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             $verify->execute(['otp' => $otpId]);
                             $db->commit();
 
+                            if ((string)$account['role'] === 'SUPER_ADMIN') {
+                                $l = $db->prepare('SELECT GREATEST(0,TIMESTAMPDIFF(SECOND,NOW(),locked_until)) AS remaining, UNIX_TIMESTAMP(locked_until) AS deadline FROM auth_users WHERE user_id=:id');
+                                $l->execute(['id'=>(int)$account['user_id']]);
+                                $lockInfo = $l->fetch(PDO::FETCH_ASSOC) ?: [];
+                                if ((int)($lockInfo['remaining'] ?? 0) > 0) {
+                                    loginOtpClearPending();
+                                    header('Location: app/super-admin/login.php?backup_locked=1&until=' . (int)($lockInfo['deadline'] ?? 0), true, 303);
+                                    exit;
+                                }
+                            }
                             $destination = loginOtpDestination((string) $account['role']);
                             loginOtpCompleteSession($account);
                             auditAuthentication($db, 'LOGIN_SUCCESS', $account, 'Successful login after OTP verification.');

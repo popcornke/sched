@@ -3,6 +3,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/shared/auth.php';
 authRequire(false, ['STAFF']);
+require_once dirname(__DIR__) . '/shared/audit.php';
 $user = htmlspecialchars((string)($_SESSION['auth_username'] ?? 'Staff'), ENT_QUOTES, 'UTF-8');
 ?>
 <!doctype html>

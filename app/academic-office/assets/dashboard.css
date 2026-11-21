@@ -33,9 +33,7 @@
 .acad-shell .acad-choice:hover{background:#e4ecf8;border-color:#b8cbe7}
 .acad-shell .acad-choice.active{background:#203e88;color:#fff;border-color:#203e88}
 .acad-shell .acad-tab-panel[hidden]{display:none!important}
-.acad-shell .acad-inline-report{width:100%;height:680px;border:0;display:block;background:white;border-radius:14px}
-.acad-shell .acad-reports-panel{padding:0;overflow:hidden}
-@media(max-width:760px){.acad-shell .acad-inline-report{height:740px}}
+
 /* Recent Schedule Requests retains its previous panel padding and height. */
 @media(max-width:600px) {
  .acad-shell .office-kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
@@ -43,3 +41,8 @@
  .acad-shell .office-mini-grid {grid-template-columns:1fr 1fr;gap:9px;}
  .acad-shell .office-mini {padding:11px;}
 }
+
+.acad-shell .acad-reports-entry{display:flex;gap:18px;align-items:center;padding:24px;background:#fff;border:1px solid #dde6f2;border-radius:14px;box-shadow:0 5px 16px #1d376208}
+.acad-shell .acad-reports-entry-icon{font-size:26px;color:#25509b;background:#edf3fd;width:52px;height:52px;border-radius:12px;display:grid;place-items:center;flex-shrink:0}
+.acad-shell .acad-reports-entry>div:nth-child(2){flex:1;min-width:0}.acad-shell .acad-reports-entry h2{font-size:16px;margin:0 0 6px;color:#17385f}.acad-shell .acad-reports-entry p{font-size:12px;margin:0;line-height:1.6;color:#647892}
+@media(max-width:680px){.acad-shell .acad-reports-entry{flex-wrap:wrap;padding:18px}.acad-shell .acad-reports-entry>a{width:100%;justify-content:center}}

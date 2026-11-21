@@ -6,6 +6,6 @@
  document.querySelectorAll('[data-document-view]').forEach(link=>link.addEventListener('click',function(e){e.preventDefault();open(this.dataset.documentView);}));
  modal.querySelectorAll('[data-close-modal]').forEach(el=>el.addEventListener('click',close));
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)close();});
- print.addEventListener('click',()=>{try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){alert('Unable to open print preview. Use View to open the document in a separate tab.');}});
+ print.addEventListener('click',()=>{try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){window.aoNotice?.('Printing unavailable', 'Unable to open print preview. Use View to open the document in a separate tab.');}});
  const url=new URL(location.href),id=url.searchParams.get('open');if(id&&/^\d+$/.test(id))open(id);
 })();

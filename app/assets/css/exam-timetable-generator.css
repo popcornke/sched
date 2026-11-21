@@ -1289,3 +1289,7 @@ body.bcp-exam-page {
         break-inside: avoid !important;
     }
 }
+/* School-wide draft preview indicator */
+.bcp-exam__preview-help{margin:16px 0 0;padding:13px 16px;border:1px solid #bfd3f1;background:#edf4ff;border-radius:12px;color:#1d3f78;font-size:13px;line-height:1.6;font-weight:600}
+.bcp-exam__preview-help[hidden]{display:none!important}
+@media print{.bcp-exam__preview-help{display:none}}

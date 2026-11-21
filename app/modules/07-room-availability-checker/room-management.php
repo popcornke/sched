@@ -154,6 +154,7 @@ if(($_SERVER['REQUEST_METHOD']??'')==='POST'){
   $changed=0;foreach($moves as $sid=>$target){foreach($source[$sid] as $m){$update->execute([$target,(int)$m['meeting_id'],$selected]);if($update->rowCount()!==1)throw new RuntimeException('Unable to relocate all meetings. No changes were saved.');$changed++;}}
   $updateRoom=$db->prepare("UPDATE rooms SET status=? WHERE room_id=? AND data_origin='DEMO'");$updateRoom->execute([$status,$selected]);
   $db->commit();
+  auditLog($db,'ROOM_STATUS_CHANGED','ROOM_MANAGEMENT','ROOM',(string)$selected,'Room status update committed.', ['new_status'=>$status,'relocation_count'=>count($moves)]);
   $message=$restored>0?('Maintenance completed: restored '.$restored.' class meetings to their original room.') : ($changed>0?('Relocated '.$changed.' active meetings across '.count($moves).' sections, then marked room '.$status.'.'):'Room status updated successfully.');
   // Refresh read-only suggestions from the updated DB after PRG.
   $qs=http_build_query(['embed'=>$embedded?'1':'0','room_id'=>$selected,'period_id'=>$period,'success'=>$message]);

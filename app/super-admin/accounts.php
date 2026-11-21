@@ -22,9 +22,14 @@ $where = ['1=1'];
 $params = [];
 if ($search !== '') {
     $where[] = $hasEmail
-        ? '(username LIKE :search OR email LIKE :search)'
+        ? '(username LIKE :search_user OR email LIKE :search_email)'
         : 'username LIKE :search';
-    $params['search'] = '%' . $search . '%';
+    if ($hasEmail) {
+        $params['search_user'] = '%' . $search . '%';
+        $params['search_email'] = '%' . $search . '%';
+    } else {
+        $params['search'] = '%' . $search . '%';
+    }
 }
 if (in_array($roleFilter, $roles, true)) {
     $where[] = 'role = :role';
@@ -87,10 +92,10 @@ saPageStart('Account Management', 'accounts');
         <h1>Account management.</h1>
         <p>CRUD controls for system accounts. Teacher accounts may also depend on their linked teacher record.</p>
     </div>
-    <div class="sa-actions"><span class="sa-btn sa-btn--light"><i class="fa-solid fa-users"></i><?= number_format($total) ?> matching accounts</span></div>
+    <div class="sa-actions"><span class="sa-btn sa-btn--light"><i class="fa-solid fa-users"></i><span id="saAccountsCount"><?= number_format($total) ?> matching accounts</span></span></div>
 </header>
 
-<section class="sa-grid sa-grid--2">
+<section class="sa-grid sa-grid--2 sa-account-editor">
     <article class="sa-card sa-card-pad">
         <div class="sa-section-title"><div><h2>Create account</h2><p>Provision a new login account.</p></div></div>
         <form method="post" action="account-action.php" class="sa-form-grid">
@@ -98,7 +103,7 @@ saPageStart('Account Management', 'accounts');
             <input type="hidden" name="action" value="create">
             <div class="sa-field"><label for="new_username">Username</label><input id="new_username" name="username" maxlength="80" required></div>
             <?php if ($hasEmail): ?><div class="sa-field"><label for="new_email">Email</label><input id="new_email" name="email" type="email" maxlength="254"><small>Admin/Scheduler login OTP requires a verified email.</small></div><?php endif; ?>
-            <div class="sa-field"><label for="new_role">Role</label><select id="new_role" name="role" required><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>"><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select></div>
+            <div class="sa-field"><label for="new_role">Role</label><select id="new_role" name="role" required class="sa-modern-select"><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>"><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select></div>
             <div class="sa-field"><label for="new_password">Temporary password</label><input id="new_password" name="password" type="password" minlength="12" maxlength="128" required><small>Minimum 12 characters.</small></div>
             <div class="sa-field sa-field--full"><button class="sa-btn sa-btn--primary" type="submit"><i class="fa-solid fa-user-plus"></i>Create account</button></div>
         </form>
@@ -115,7 +120,7 @@ saPageStart('Account Management', 'accounts');
                 <input type="hidden" name="user_id" value="<?= (int) $editAccount['user_id'] ?>">
                 <div class="sa-field"><label>Username</label><input name="username" maxlength="80" value="<?= saEsc((string) $editAccount['username']) ?>" required></div>
                 <?php if ($hasEmail): ?><div class="sa-field"><label>Email</label><input name="email" type="email" maxlength="254" value="<?= saEsc((string) ($editAccount['email'] ?? '')) ?>"></div><?php endif; ?>
-                <div class="sa-field"><label>Role</label><select name="role" <?= (int) $editAccount['user_id'] === (int) ($_SESSION['auth_user_id'] ?? 0) ? 'disabled' : '' ?>><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>" <?= $role === $editAccount['role'] ? 'selected' : '' ?>><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select><?php if ((int) $editAccount['user_id'] === (int) ($_SESSION['auth_user_id'] ?? 0)): ?><input type="hidden" name="role" value="SUPER_ADMIN"><small>Your current role cannot be changed here.</small><?php endif; ?></div>
+                <div class="sa-field"><label>Role</label><select name="role" class="sa-modern-select" <?= (int) $editAccount['user_id'] === (int) ($_SESSION['auth_user_id'] ?? 0) ? 'disabled' : '' ?>><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>" <?= $role === $editAccount['role'] ? 'selected' : '' ?>><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select><?php if ((int) $editAccount['user_id'] === (int) ($_SESSION['auth_user_id'] ?? 0)): ?><input type="hidden" name="role" value="SUPER_ADMIN"><small>Your current role cannot be changed here.</small><?php endif; ?></div>
                 <div class="sa-field"><label>New password (optional)</label><input name="password" type="password" minlength="12" maxlength="128" placeholder="Leave blank to keep current password"></div>
                 <div class="sa-field sa-field--full"><button class="sa-btn sa-btn--primary" type="submit"><i class="fa-solid fa-floppy-disk"></i>Save changes</button></div>
             </form>
@@ -123,17 +128,16 @@ saPageStart('Account Management', 'accounts');
     </article>
 </section>
 
-<section class="sa-section sa-card">
+<section class="sa-section sa-card sa-accounts-list">
     <div class="sa-card-pad">
-        <form method="get" class="sa-filter">
-            <div class="sa-field"><label>Search</label><input name="q" value="<?= saEsc($search) ?>" placeholder="Username<?= $hasEmail ? ' or email' : '' ?>"></div>
-            <div class="sa-field"><label>Role</label><select name="role"><option value="">All roles</option><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>" <?= $roleFilter === $role ? 'selected' : '' ?>><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select></div>
-            <div class="sa-field"><label>Status</label><select name="status"><option value="">All statuses</option><option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option><option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>Inactive</option></select></div>
-            <button class="sa-btn sa-btn--primary" type="submit"><i class="fa-solid fa-filter"></i>Apply</button>
-            <a class="sa-btn sa-btn--light" href="accounts.php">Reset</a>
+        <form method="get" class="sa-filter" id="saAccountFilters" role="search">
+            <div class="sa-field"><label for="saAccountSearch">Search</label><input id="saAccountSearch" name="q" type="search" autocomplete="off" value="<?= saEsc($search) ?>" placeholder="Username<?= $hasEmail ? ' or email' : '' ?>"></div>
+            <div class="sa-field"><label>Role</label><select name="role" class="sa-modern-select"><option value="">All roles</option><?php foreach ($roles as $role): ?><option value="<?= saEsc($role) ?>" <?= $roleFilter === $role ? 'selected' : '' ?>><?= saEsc(str_replace('_', ' ', $role)) ?></option><?php endforeach; ?></select></div>
+            <div class="sa-field"><label>Status</label><select name="status" class="sa-modern-select"><option value="">All statuses</option><option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option><option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>Inactive</option></select></div>
+            <span class="sa-filter-feedback" id="saAccountFilterFeedback" role="status" aria-live="polite"></span>
         </form>
     </div>
-    <div class="sa-table-wrap">
+    <div class="sa-table-wrap" id="saAccountsTableWrap">
         <table class="sa-table">
             <thead><tr><th>ID</th><th>Username</th><?php if ($hasEmail): ?><th>Email</th><?php endif; ?><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>
@@ -146,20 +150,41 @@ saPageStart('Account Management', 'accounts');
                     <td><span class="sa-badge sa-badge--role"><?= saEsc((string) $account['role']) ?></span></td>
                     <td><span class="sa-badge <?= (int) $account['is_active'] === 1 ? 'sa-badge--active' : 'sa-badge--inactive' ?>"><?= (int) $account['is_active'] === 1 ? 'ACTIVE' : 'INACTIVE' ?></span></td>
                     <td class="muted"><?= saEsc(date('M d, Y', strtotime((string) $account['created_at']))) ?></td>
-                    <td><div class="sa-inline-actions">
-                        <a class="sa-btn sa-btn--light" href="accounts.php?<?= saEsc(saAccountsQuery(['edit' => (int) $account['user_id']])) ?>#edit-card"><i class="fa-solid fa-pen"></i>Edit</a>
-                        <?php if (!$isSelf): ?>
-                            <form method="post" action="account-action.php" onsubmit="return confirm('<?= (int) $account['is_active'] === 1 ? 'Deactivate' : 'Activate' ?> this account?')"><input type="hidden" name="csrf_token" value="<?= saEsc(authCsrf()) ?>"><input type="hidden" name="action" value="toggle"><input type="hidden" name="user_id" value="<?= (int) $account['user_id'] ?>"><button class="sa-btn <?= (int) $account['is_active'] === 1 ? 'sa-btn--warn' : 'sa-btn--success' ?>" type="submit"><i class="fa-solid <?= (int) $account['is_active'] === 1 ? 'fa-user-slash' : 'fa-user-check' ?>"></i><?= (int) $account['is_active'] === 1 ? 'Deactivate' : 'Activate' ?></button></form>
-                            <form method="post" action="account-action.php" onsubmit="return confirm('Delete this unused account permanently? If it has system history, deletion will be blocked and you should deactivate it instead.')"><input type="hidden" name="csrf_token" value="<?= saEsc(authCsrf()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="<?= (int) $account['user_id'] ?>"><button class="sa-btn sa-btn--danger" type="submit"><i class="fa-solid fa-trash"></i>Delete</button></form>
-                        <?php endif; ?>
-                    </div></td>
+                    <td>
+                        <details class="sa-account-menu">
+                            <summary class="sa-btn sa-btn--light" aria-label="Account actions for <?= saEsc((string) $account['username']) ?>"><i class="fa-solid fa-ellipsis"></i> Actions <i class="fa-solid fa-chevron-down sa-menu-chevron"></i></summary>
+                            <div class="sa-account-menu-panel">
+                                <a href="accounts.php?<?= saEsc(saAccountsQuery(['edit' => (int) $account['user_id']])) ?>#edit-card"><i class="fa-solid fa-pen"></i> Edit account</a>
+                                <?php if (!$isSelf): ?>
+                                <form method="post" action="account-action.php" data-confirm-title="<?= (int) $account['is_active'] === 1 ? 'Deactivate account?' : 'Activate account?' ?>" data-confirm-detail="<?= (int) $account['is_active'] === 1 ? 'This user will no longer be able to sign in.' : 'This user will be able to sign in again.' ?>">
+                                    <input type="hidden" name="csrf_token" value="<?= saEsc(authCsrf()) ?>"><input type="hidden" name="action" value="toggle"><input type="hidden" name="user_id" value="<?= (int) $account['user_id'] ?>">
+                                    <button type="submit"><i class="fa-solid <?= (int) $account['is_active'] === 1 ? 'fa-user-slash' : 'fa-user-check' ?>"></i> <?= (int) $account['is_active'] === 1 ? 'Deactivate' : 'Activate' ?></button>
+                                </form>
+                                <form method="post" action="account-action.php" data-confirm-title="Delete account permanently?" data-confirm-detail="This action cannot be undone. Accounts with linked history are protected by the database." data-danger="1">
+                                    <input type="hidden" name="csrf_token" value="<?= saEsc(authCsrf()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="<?= (int) $account['user_id'] ?>">
+                                    <button type="submit" class="sa-account-menu-danger"><i class="fa-solid fa-trash"></i> Delete account</button>
+                                </form>
+                                <?php endif; ?>
+                            </div>
+                        </details>
+                    </td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
         </table>
     </div>
-    <?php if ($totalPages > 1): ?><div class="sa-pagination"><?php for ($i = 1; $i <= $totalPages; $i++): ?><?php if ($i === $page): ?><span class="current"><?= $i ?></span><?php else: ?><a href="accounts.php?<?= saEsc(saAccountsQuery(['page' => $i])) ?>"><?= $i ?></a><?php endif; ?><?php endfor; ?></div><?php endif; ?>
+    <?php if ($totalPages > 1): ?><div class="sa-pagination" id="saAccountsPagination"><?php for ($i = 1; $i <= $totalPages; $i++): ?><?php if ($i === $page): ?><span class="current"><?= $i ?></span><?php else: ?><a href="accounts.php?<?= saEsc(saAccountsQuery(['page' => $i])) ?>"><?= $i ?></a><?php endif; ?><?php endfor; ?></div><?php endif; ?>
 </section>
 
 <div class="sa-note sa-section"><strong>Delete behavior:</strong> accounts already referenced by approvals, logs, notifications, or other records are intentionally protected by database foreign keys. Use <strong>Deactivate</strong> for those accounts so historical records remain intact.</div>
+<div class="sa-account-confirm-overlay" id="saAccountConfirm" hidden>
+    <div class="sa-account-confirm" role="dialog" aria-modal="true" aria-labelledby="saConfirmTitle" aria-describedby="saConfirmMessage">
+        <span class="sa-account-confirm-icon"><i class="fa-solid fa-shield-halved"></i></span>
+        <h2 id="saConfirmTitle">Confirm account action</h2>
+        <p id="saConfirmMessage"></p>
+        <div class="sa-account-confirm-actions"><button type="button" class="sa-btn sa-btn--light" id="saConfirmCancel">Cancel</button><button type="button" class="sa-btn sa-btn--primary" id="saConfirmAccept">Confirm</button></div>
+    </div>
+</div>
+<link rel="stylesheet" href="<?= saEsc(authBasePath()) ?>/app/assets/css/super-admin-accounts.css?v=20261121-4">
+<script src="<?= saEsc(authBasePath()) ?>/app/assets/js/super-admin-accounts.js?v=20261121-4" defer></script>
 <?php saPageEnd(); ?>

@@ -1,11 +1,11 @@
 <?php
-/** Academic Office-only, immutable custom date-range reporting snapshots. */
+/** Academic Office saved date-range reporting. */
 declare(strict_types=1);
 require_once __DIR__.'/shared.php';
 $db=acadDb();
 $tz=new DateTimeZone('Asia/Manila');
 $today=new DateTimeImmutable('today',$tz);
-$embed=(($_GET['embed']??$_POST['embed']??'')==='1');
+$embed=false; // Standalone reports only: no nested dashboard iframe.
 $todayStr=$today->format('Y-m-d');
 $startStr=(string)($_POST['start_date']??$_GET['start_date']??$today->modify('first day of this month')->format('Y-m-d'));
 $endStr=(string)($_POST['end_date']??$_GET['end_date']??$todayStr);
@@ -88,7 +88,7 @@ try {
   $metrics['meetings']=array_sum(array_map(static fn($r)=>(int)$r['meeting_count'],$metrics['schedules']));
   $q=$db->prepare('INSERT INTO academic_office_saved_reports(report_type,period_start,period_end,created_by,metrics_json,breakdown_json,scope_program_id,scope_label) VALUES (?,?,?,?,?,?,?,?)');
   $q->execute(['CUSTOM',$startStr,$endStr,(int)$_SESSION['auth_user_id'],json_encode($metrics,JSON_THROW_ON_ERROR),json_encode($breakdown,JSON_THROW_ON_ERROR),$scopeId,$scopeName]);
-  header('Location: reports.php?report_id='.(int)$db->lastInsertId().'&saved=1'.($embed?'&embed=1':''),true,303);exit;
+  header('Location: reports.php?report_id='.(int)$db->lastInsertId().'&saved=1',true,303);exit;
  }
  $saved=$db->query("SELECT s.report_id,s.report_type,s.period_start,s.period_end,s.created_at,s.metrics_json,s.scope_label,u.username FROM academic_office_saved_reports s JOIN auth_users u ON u.user_id=s.created_by ORDER BY s.created_at DESC,s.report_id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
  $id=filter_var($_GET['report_id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
@@ -103,35 +103,38 @@ try {
    :acadReportSchedules($db,(string)$selectedReport['period_start'],(string)$selectedReport['period_end'],$scope);
   $selectedReport['schedule_rows_legacy']=!isset($priorMetrics['schedules']);
  }
- $success=($_GET['saved']??'')==='1'?'Report snapshot saved successfully.':null;
+ $success=($_GET['saved']??'')==='1'?'Academic schedule report saved successfully.':null;
 } catch(Throwable $e){error_log('Academic reports: '.$e->getMessage());$error=($e instanceof PDOException)?'Reporting table is unavailable. Please import migration 024 in the local database.':$e->getMessage();}
-if(!$embed){acadLayout('Saved Reports');}else{echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Saved Reports | Academic Office</title><link rel="stylesheet" href="assets/office.css?v=9"><link rel="stylesheet" href="assets/admin-consistency.css?v=9"></head><body class="acad-shell acad-report-embedded"><main class="acad-content">';}
+if(!$embed){acadLayout('Saved Reports');}else{echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Saved Reports | Academic Office</title><link rel="stylesheet" href="assets/office.css?v=9"><link rel="stylesheet" href="assets/admin-consistency.css?v=9"><link rel="stylesheet" href="assets/ao-confirm.css?v=1"></head><body class="acad-shell acad-report-embedded"><main class="acad-content">';}
 ?>
-<link rel="stylesheet" href="assets/reports.css?v=20">
-<div class="eyebrow">BCP CLASS SCHEDULING SYSTEM · ACADEMIC OFFICE</div>
-<div class="report-header"><div><h1 class="report-title">Saved Reports<span class="office-dot">.</span></h1><p>Save a permanent snapshot for your selected start and end dates.</p></div><?php if(!$embed):?><a class="btn secondary report-no-print" href="dashboard.php">← Back to Dashboard</a><?php endif;?></div>
+<link rel="stylesheet" href="assets/reports.css?v=flat1">
+<?php if(!$selectedReport):?><div class="eyebrow">BCP CLASS SCHEDULING SYSTEM · ACADEMIC OFFICE</div><?php endif;?>
+<?php if(!$selectedReport):?><div class="report-header"><div><h1 class="report-title">Saved Reports<span class="office-dot">.</span></h1><p>Create and export saved academic schedule reports as PDF or Excel-ready CSV.</p></div><?php if(!$embed):?><a class="btn secondary report-no-print" href="dashboard.php">← Back to Dashboard</a><?php endif;?></div>
 <?php if($error):?><div class="note error"><?=acadH($error)?></div><?php endif;?>
 <?php if($success):?><div class="note"><?=acadH($success)?></div><?php endif;?>
-<section class="panel report-no-print"><h2>Generate Report Snapshot</h2><p>Choose the exact date range to include in your approval report. Both dates are included.</p><form class="report-form" method="post"><?php if($embed):?><input type="hidden" name="embed" value="1"><?php endif;?><input type="hidden" name="csrf_token" value="<?=acadH(authCsrf())?>"><input type="hidden" name="operation" value="save"><label>Department / Program<select name="program_id" required><option value="all" <?=$requestedScope==='all'?'selected':''?>>All Departments (All Programs)</option><?php foreach($programOptions as $program):?><option value="<?=(int)$program['program_id']?>" <?=$requestedScope!=='all' && (int)$scopeId===(int)$program['program_id']?'selected':''?>><?=acadH($program['program_code'].' — '.$program['program_name'])?></option><?php endforeach;?></select></label><label>Start Date<input type="date" name="start_date" max="<?=acadH($todayStr)?>" value="<?=acadH($startStr)?>" required></label><label>End Date<input type="date" name="end_date" max="<?=acadH($todayStr)?>" value="<?=acadH($endStr)?>" required></label><button type="submit" onclick="return confirm('Save an approval report for the selected date range?')">Save Report</button></form><p class="report-hint">Both start and end dates are included. Requests are selected by submission date. Approval statuses reflect the database at the moment of saving; older snapshots will not change when new decisions occur.</p></section>
+<section class="report-workspace report-no-print"><h2>Create Academic Schedule Report</h2><p>Choose the exact date range to include in your approval report. Both dates are included.</p><form class="report-form" method="post"><?php if($embed):?><input type="hidden" name="embed" value="1"><?php endif;?><input type="hidden" name="csrf_token" value="<?=acadH(authCsrf())?>"><input type="hidden" name="operation" value="save"><label>Department / Program<select name="program_id" required><option value="all" <?=$requestedScope==='all'?'selected':''?>>All Departments (All Programs)</option><?php foreach($programOptions as $program):?><option value="<?=(int)$program['program_id']?>" <?=$requestedScope!=='all' && (int)$scopeId===(int)$program['program_id']?'selected':''?>><?=acadH($program['program_code'].' — '.$program['program_name'])?></option><?php endforeach;?></select></label><label>Start Date<input type="date" name="start_date" max="<?=acadH($todayStr)?>" value="<?=acadH($startStr)?>" required></label><label>End Date<input type="date" name="end_date" max="<?=acadH($todayStr)?>" value="<?=acadH($endStr)?>" required></label><button type="submit">Generate &amp; Save Report</button></form><p class="report-hint">Both start and end dates are included. Requests are selected by submission date. Approval statuses reflect the database at the moment of saving; saved report values remain available for future review.</p></section>
+<?php endif;?>
 <?php if($selectedReport):$m=reportJson($selectedReport['metrics_json']);$b=reportJson($selectedReport['breakdown_json']);?>
-<div class="report-modal office-modal" id="reportModal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
- <div class="office-modal-backdrop"></div><div class="report-dialog office-modal-shell">
-  <div class="report-modal-header office-modal-top"><div><strong id="reportModalTitle">Official Academic Report Preview</strong><p>Review the saved report. Print or save it as PDF.</p></div><button type="button" class="report-modal-dismiss office-modal-close" aria-label="Close" onclick="closeReport()">×</button></div>
-  <div class="report-modal-body office-modal-frame"><article class="report-paper acad-report-document" id="report-document">
-   <div class="report-doc-heading"><div class="eyebrow">BESTLINK COLLEGE OF THE PHILIPPINES</div><h2>Academic Approval Report #<?=(int)$selectedReport['report_id']?></h2><div class="report-doc-meta"><span><?=acadH($selectedReport['scope_label']??'All Departments (All Programs)')?></span><span><?=acadH($selectedReport['period_start'])?> to <?=acadH($selectedReport['period_end'])?></span><span>Prepared by <?=acadH($selectedReport['username'])?></span><span>Saved <?=acadH($selectedReport['created_at'])?></span></div></div>
+<section class="report-viewer" aria-labelledby="reportModalTitle">
+ <div class="report-viewer-toolbar report-no-print">
+  <div><a class="report-back-link" href="reports.php">← Saved Reports</a><h1 id="reportModalTitle">Academic Schedule Report #<?=(int)$selectedReport['report_id']?></h1><p>Official saved report · Read-only preview</p></div>
+  <div class="report-viewer-actions"><a class="btn report-csv" href="report-export.php?format=csv&amp;report_id=<?=(int)$selectedReport['report_id']?>">↓ Export CSV</a><button type="button" class="btn report-print" onclick="printReport()">▣ Export PDF</button></div>
+ </div>
+ <article class="report-paper acad-report-document" id="report-document">
+ <div class="report-doc-heading"><div class="eyebrow">BESTLINK COLLEGE OF THE PHILIPPINES</div><h2>Academic Approval Report #<?=(int)$selectedReport['report_id']?></h2><div class="report-doc-meta"><span><?=acadH($selectedReport['scope_label']??'All Departments (All Programs)')?></span><span><?=acadH($selectedReport['period_start'])?> to <?=acadH($selectedReport['period_end'])?></span><span>Prepared by <?=acadH($selectedReport['username'])?></span><span>Saved <?=acadH($selectedReport['created_at'])?></span></div></div>
    <?php $scheduleRows=$selectedReport['schedule_rows']??[];$programLabels=array_unique(array_column($scheduleRows,'program_code'));$reportedMeetings=array_sum(array_map(static fn($v)=>(int)($v['meeting_count']??0),$scheduleRows));?>
    <div class="report-pills report-pills-compact">
     <div class="report-pill"><small>Program</small><b><?=acadH($programLabels?implode(', ',$programLabels):'No active schedules')?></b></div>
     <div class="report-pill"><small>Current Active Meetings</small><b><?=number_format((int)($selectedReport['current_active_meetings']??0))?></b></div>
    </div>
+   <div class="report-export-summary"><h3>Approval Summary</h3><table><thead><tr><th>Total Requests</th><th>Approved</th><th>Pending</th><th>Rejected</th></tr></thead><tbody><tr><td><?=(int)($m['requests']??0)?></td><td><?=(int)($m['approved']??0)?></td><td><?=(int)($m['pending']??0)?></td><td><?=(int)($m['rejected']??0)?></td></tr></tbody></table></div>
+   <?php if($b):?><div class="report-export-summary"><h3>Department Breakdown</h3><table><thead><tr><th>Program</th><th>Requests</th><th>Approved</th><th>Rejected</th><th>Pending</th></tr></thead><tbody><?php foreach($b as $entry):?><tr><td><?=acadH($entry['program_code']??'')?></td><td><?=(int)($entry['requests']??0)?></td><td><?=(int)($entry['approved']??0)?></td><td><?=(int)($entry['rejected']??0)?></td><td><?=(int)($entry['pending']??0)?></td></tr><?php endforeach;?></tbody></table></div><?php endif;?>
    <div class="report-document-caption">Reporting period: <?=acadH($selectedReport['period_start'])?> to <?=acadH($selectedReport['period_end'])?> · <?=acadH($selectedReport['scope_label']??'All Departments (All Programs)')?></div>
    <?php include __DIR__.'/report-schedule-document.php'; ?>
-   <p class="report-current-note"><?=!empty($selectedReport['schedule_rows_legacy'])?'Older report: the schedule shown uses currently active approved records.':'The schedule rows above were saved in this report snapshot.'?> Current Active Meetings is a live count.</p>
-  </article></div>
-  <div class="report-modal-actions office-modal-actions"><button type="button" class="btn secondary" onclick="closeReport()">← Back</button><button type="button" class="btn report-print" onclick="printReport()">▣ Print / Save as PDF</button></div>
- </div>
-</div>
+   <p class="report-current-note"><?=!empty($selectedReport['schedule_rows_legacy'])?'Older report: the schedule shown uses currently active approved records.':'The schedule rows above were captured when this report was created.'?> Current Active Meetings is a live count.</p>
+  </article>
+</section>
 <?php endif;?>
-<section class="panel report-no-print"><div class="office-panel-top"><div><h2>Report Archive</h2><p>Saved date-range reports remain available for future review.</p></div></div><div class="scroll report-table"><table><thead><tr><th>Report</th><th>Period</th><th>Department / Program</th><th>Requests</th><th>Approved</th><th>Prepared by</th><th>Saved at</th><th></th></tr></thead><tbody><?php foreach($saved as $r):$m=reportJson($r['metrics_json']);?><tr><td><b>#<?=(int)$r['report_id']?></b> · <?=acadH($r['report_type']==="CUSTOM"?"Date Range":ucfirst(strtolower($r['report_type'])))?></td><td><?=acadH($r['period_start'])?> – <?=acadH($r['period_end'])?></td><td><?=acadH($r['scope_label']??'All Departments (All Programs)')?></td><td><?=(int)($m['requests']??0)?></td><td><?=(int)($m['approved']??0)?></td><td><?=acadH($r['username'])?></td><td><?=acadH($r['created_at'])?></td><td><a class="btn secondary" href="reports.php?report_id=<?=(int)$r['report_id']?><?=$embed?'&amp;embed=1':''?>">View</a></td></tr><?php endforeach;if(!$saved):?><tr><td colspan="8">No saved reports yet. Create your first snapshot above.</td></tr><?php endif;?></tbody></table></div></section>
-<script src="assets/reports.js?v=20" defer></script>
-<?php if($embed){echo '</main></body></html>';}else{acadEnd();} ?>
+<?php if(!$selectedReport):?><section class="report-workspace report-no-print report-list-panel"><div class="office-panel-top"><div><h2>Saved Academic Reports</h2><p>Saved date-range reports remain available for future review.</p></div></div><div class="scroll report-table"><table><thead><tr><th>Report</th><th>Period</th><th>Department / Program</th><th>Requests</th><th>Approved</th><th>Prepared by</th><th>Saved at</th><th></th></tr></thead><tbody><?php foreach($saved as $r):$m=reportJson($r['metrics_json']);?><tr><td><b>#<?=(int)$r['report_id']?></b> · <?=acadH($r['report_type']==="CUSTOM"?"Date Range":ucfirst(strtolower($r['report_type'])))?></td><td><?=acadH($r['period_start'])?> – <?=acadH($r['period_end'])?></td><td><?=acadH($r['scope_label']??'All Departments (All Programs)')?></td><td><?=(int)($m['requests']??0)?></td><td><?=(int)($m['approved']??0)?></td><td><?=acadH($r['username'])?></td><td><?=acadH($r['created_at'])?></td><td><div class="report-row-actions"><a class="btn secondary" href="reports.php?report_id=<?=(int)$r['report_id']?>">View</a><a class="btn secondary" href="report-export.php?format=csv&amp;report_id=<?=(int)$r['report_id']?>">CSV</a></div></td></tr><?php endforeach;if(!$saved):?><tr><td colspan="8">No saved reports yet. Create your first report above.</td></tr><?php endif;?></tbody></table></div></section><?php endif;?>
+<script src="assets/reports.js?v=flat1" defer></script>
+<?php if($embed){echo '</main><script src="assets/ao-confirm.js?v=1" defer></script></body></html>';}else{acadEnd();} ?>

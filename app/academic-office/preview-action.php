@@ -29,7 +29,7 @@ try {
  if($actor===(int)$r['submitted_by'])throw new RuntimeException('Cannot approve own submission');
  if(!hash_equals($r['payload_hash'],hash('sha256',$r['payload_json'])))throw new RuntimeException('Stored preview integrity check failed');
  if($decision==='REJECTED'){
-  $q=$db->prepare("UPDATE academic_preview_requests SET status='REJECTED',reviewed_by=?,reviewed_at=NOW(),reason=? WHERE request_id=?");$q->execute([$actor,$remarks,$id]);$db->commit();header('Location: preview-review.php?id='.$id,true,303);exit;
+  $q=$db->prepare("UPDATE academic_preview_requests SET status='REJECTED',reviewed_by=?,reviewed_at=NOW(),reason=? WHERE request_id=?");$q->execute([$actor,$remarks,$id]);$db->commit();auditLog($db, $decision==='REJECTED'?'CLASS_REJECTED':'CLASS_APPROVED', 'CLASS_APPROVAL', 'CLASS_REQUEST', (string)$id, 'Academic Office decision committed.', ['decision'=>$decision]);header('Location: preview-review.php?id='.$id,true,303);exit;
  }
  $preview=json_decode($r['payload_json'],true,512,JSON_THROW_ON_ERROR);
  $result=$preview['result'];$program=$preview['program'];$periodInfo=$preview['academic_period'];
@@ -73,6 +73,6 @@ try {
  foreach($meetings as $m)$insert->execute([$batchId,$m['ss'],$m['teacher'],$m['room'],$m['mode'],$m['day'],$m['start'],$m['end']]);
  $count=$db->prepare('SELECT COUNT(*) FROM schedule_meetings WHERE batch_id=?');$count->execute([$batchId]);if((int)$count->fetchColumn()!==count($meetings))throw new RuntimeException('Saved meeting count mismatch');
  $up=$db->prepare("UPDATE academic_preview_requests SET status='APPROVED',reviewed_by=?,reviewed_at=NOW(),reason=?,batch_id=? WHERE request_id=? AND status='PENDING_REVIEW'");$up->execute([$actor,$remarks,$batchId,$id]);if($up->rowCount()!==1)throw new RuntimeException('Approval state changed');
- $db->commit();header('Location: preview-review.php?id='.$id,true,303);exit;
+ $db->commit();auditLog($db, $decision==='REJECTED'?'CLASS_REJECTED':'CLASS_APPROVED', 'CLASS_APPROVAL', 'CLASS_REQUEST', (string)$id, 'Academic Office decision committed.', ['decision'=>$decision]);header('Location: preview-review.php?id='.$id,true,303);exit;
 } catch(Throwable $e){if($db->inTransaction())$db->rollBack();error_log('Academic preview approval failed: '.$e->getMessage());http_response_code(409);echo '<h1>Approval could not be completed</h1><p>'.acadH($e->getMessage()).'</p><p>No new schedule is saved if this approval transaction failed.</p><a href="preview-review.php?id='.(int)$id.'">Back to review</a>';}
 finally{if($locked){try{$q=$db->prepare('SELECT RELEASE_LOCK(?)');$q->execute([$lockName]);}catch(Throwable $e){error_log($e->getMessage());}}}

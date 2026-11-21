@@ -70,7 +70,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           <div>
             <p class="bcp-exam__eyebrow"><span class="bcp-exam__eyebrow-dot"></span> BCP CLASS SCHEDULING SYSTEM</p>
             <h1>Exam Timetable Generator<span class="bcp-exam__title-dot">.</span></h1>
-            <p>Set one BCP-wide three-day examination period. Selecting a program automatically uses these dates. If only the dates change, saved room, proctor, time, subject, and Exam Day assignments are preserved and revalidated before the update is committed.</p>
+            <p>Set one BCP-wide three-day examination period. Generate one examination timetable for ALL active college programs. The Program dropdown is for viewing saved schedules only. Changes to examination dates apply across the school.</p>
           </div>
           <span class="bcp-exam__chip" title="Examination Management">DEMO · EXAM MANAGEMENT</span>
         </header>
@@ -84,7 +84,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
               </select>
             </div>
             <div class="bcp-exam__control">
-              <label for="examProgram">Program</label>
+              <label for="examProgram">Program · View saved exams only</label>
               <select id="examProgram" required>
                 <option value="">Loading…</option>
               </select>
@@ -111,15 +111,16 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
           <div class="bcp-exam__actions">
             <button type="button" class="bcp-exam__btn-secondary" id="examSetDates" disabled><i class="fa-solid fa-calendar-check"></i> Set Unified Exam Dates</button>
-            <button type="button" class="bcp-exam__btn-primary" id="examGenerate" disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview</button>
-            <button type="button" class="bcp-exam__btn-secondary bcp-exam__btn-success" id="examSave" disabled><i class="fa-solid fa-floppy-disk"></i> Confirm &amp; Save DEMO</button>
+            <button type="button" class="bcp-exam__btn-primary" id="examGenerate" disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Generate ALL Programs</button>
+            <button type="button" class="bcp-exam__btn-secondary bcp-exam__btn-success" id="examSave" disabled><i class="fa-solid fa-floppy-disk"></i> Send ALL to Academic Office</button>
 
           </div>
+          <p class="bcp-exam__preview-help" id="examPreviewHelp" hidden>DRAFT ONLY · The generated schedules are displayed below automatically. Review the sections, subjects, rooms, proctors, dates and times. Use Program above to inspect another course. Nothing becomes ACTIVE until Academic Office approves.</p>
           <p id="examStatus" class="bcp-exam__status" role="status" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin bcp-exam__status-icon"></i> Loading academic periods…</p>
         </section>
 
         <section id="examReport" hidden>
-          <!-- REMOVED WRAPPER PANEL SO BADASS CARDS HAVE SPACE -->
+          <!-- Inline schedule preview appears immediately after school-wide generation. -->
           <div class="bcp-exam__report-heading" style="background:#fff; padding:24px; border-radius:18px; border:1px solid #e5eaf3; margin-bottom:20px;">
             <div>
               <p class="bcp-exam__eyebrow">BESTLINK COLLEGE OF THE PHILIPPINES · EXAMINATION TIMETABLE</p>
@@ -214,6 +215,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
 
       const $ = id => document.getElementById(id);
       let result = null;
+      let globalPreview = null;
       let pending = false;
       let hasSaved = false;
       let activeExamBatchId = null;
@@ -367,13 +369,14 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
       }
 
       function invalidatePreview(message = 'Examination configuration changed. Generate a fresh preview before saving.') {
-        if (result?.preview_token) {
+        if (result?.status === 'UNSAVED_GLOBAL_EXAM_PREVIEW' || result?.preview_token) {
           result = null;
           $('examReport').hidden = true;
+          $('examPreviewHelp').hidden = true;
           $('examSave').disabled = true;
           $('examPrint').disabled = true;
         }
-        $('examGenerate').disabled = pending || !unifiedConfigured || examDatesDirty;
+        $('examGenerate').disabled = pending;
         if (message) setStatus(message, 'info');
       }
 
@@ -398,6 +401,8 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
       }
 
       async function loadUnifiedPeriod() {
+        globalPreview = null;
+        $('examPreviewHelp').hidden = true;
         unifiedConfigured = false;
         unifiedLocked = false;
         examDatesDirty = false;
@@ -421,11 +426,22 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             for (let i = 1; i <= 3; i++) $('examDate' + i).value = data.exam_dates[i - 1];
           } else {
             savedUnifiedDates = [];
-            for (let i = 1; i <= 3; i++) $('examDate' + i).value = '';
+            const today = dateInputValue(new Date());
+            const first = calendarConstraints?.min_date && today < calendarConstraints.min_date
+              ? calendarConstraints.min_date : today;
+            const begin = new Date(first + 'T12:00:00');
+            while (begin.getDay() === 0) begin.setDate(begin.getDate() + 1);
+            const d1 = dateInputValue(begin);
+            const d2 = nextSchoolDay(d1);
+            const d3 = nextSchoolDay(d2);
+            const withinRange = !calendarConstraints?.max_date || d3 <= calendarConstraints.max_date;
+            const defaults = withinRange ? [d1, d2, d3] : ['', '', ''];
+            for (let i = 1; i <= 3; i++) $('examDate' + i).value = defaults[i - 1];
+            examDatesDirty = withinRange;
           }
           applyCalendarConstraints();
           applyDateLock();
-          $('examGenerate').disabled = !unifiedConfigured;
+          $('examGenerate').disabled = false;
           if (unifiedConfigured) {
             const programs = unifiedActivePrograms.length ? ` Programs: ${unifiedActivePrograms.join(', ')}.` : '';
             if (unifiedActiveBatchCount > 0) setStatus(`Unified BCP exam dates are set. ${unifiedActiveBatchCount} ACTIVE exam timetable(s) currently use these dates.${programs} If you change only the dates, the system will keep the saved room, proctor, time, subject, and Exam Day assignments, remap them to the new dates, and revalidate before saving.`, 'info');
@@ -440,19 +456,19 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
       }
 
       async function saveUnifiedPeriod() {
-        if (pending) return;
+        if (pending) return false;
         const dates = currentDates();
         if (!datesValid(dates)) {
           const range = calendarConstraints?.min_date && calendarConstraints?.max_date ? ` Dates must also be within ${calendarConstraints.min_date} to ${calendarConstraints.max_date}.` : '';
           setStatus('Choose three different Monday–Saturday dates in ascending order.' + range, 'error');
-          return;
+          return false;
         }
         const changing = !savedUnifiedDates.length || dates.some((d, i) => d !== savedUnifiedDates[i]);
         let confirmRetime = false;
         if (changing && unifiedActiveBatchCount > 0) {
           const programs = unifiedActivePrograms.length ? ` (${unifiedActivePrograms.join(', ')})` : '';
           const ok = window.confirm(`Change the unified examination dates for ${unifiedActiveBatchCount} ACTIVE exam timetable(s)${programs}? The system will KEEP the existing room, proctor, time, subject, section, and Exam Day 1/2/3 assignments. Only the actual dates will move, then every saved timetable will be revalidated. No solver regeneration is performed when validation passes.`);
-          if (!ok) return;
+          if (!ok) return false;
           confirmRetime = true;
         }
         pending = true;
@@ -497,13 +513,28 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           } else {
             setStatus('Unified BCP examination dates saved. Selecting a program will automatically use these dates.', 'success');
           }
+          return true;
         } catch (e) {
           setStatus(e.message, 'error');
+          return false;
         } finally {
           pending = false;
           applyDateLock();
-          $('examGenerate').disabled = !unifiedConfigured || examDatesDirty;
+          $('examGenerate').disabled = pending;
         }
+      }
+
+      async function viewGeneratedPreview(scrollIntoView = false) {
+        if (!globalPreview?.preview_token) return;
+        const selected = $('examProgram').value;
+        const data = await api('exam-global-view.php?preview_token=' + encodeURIComponent(globalPreview.preview_token) + '&program=' + encodeURIComponent(selected), 'GET');
+        result = data;
+        render(data);
+        $('examReportBadge').textContent = 'DRAFT · NOT YET APPROVED';
+        $('examReportBadge').classList.add('bcp-exam__chip--warning');
+        $('examPrint').disabled = false;
+        $('examPreviewHelp').hidden = false;
+        if (scrollIntoView) $('examReport').scrollIntoView({behavior:'smooth',block:'start'});
       }
 
       async function loadSaved() {
@@ -513,9 +544,10 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
         $('examReport').hidden = true;
         $('examPrint').disabled = true;
         $('examSave').disabled = true;
-        $('examGenerate').disabled = true;
-        $('examGenerate').innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Exam Preview';
-        $('examSave').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Confirm & Save DEMO';
+        $('examPreviewHelp').hidden = !globalPreview;
+        $('examGenerate').disabled = pending;
+        $('examGenerate').innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate ALL Programs';
+        $('examSave').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Send ALL to Academic Office';
         const program = $('examProgram').value;
         if (!program) {
           setStatus('Choose a program.', 'info');
@@ -530,20 +562,22 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             data.solver_status = 'SAVED';
             const authoritativeDates = savedUnifiedDates.length === 3 ? savedUnifiedDates : data.exam_dates;
             if (savedUnifiedDates.length === 3 && Array.isArray(data.exam_dates) && data.exam_dates.some((d, i) => d !== savedUnifiedDates[i])) throw Error('Saved exam batch dates do not match the current academic-period exam calendar. Reload the page and review the database before continuing.');
-            for (let i = 1; i <= 3; i++) {
-              $('examDate' + i).value = authoritativeDates[i - 1];
+            if (!examDatesDirty) {
+              for (let i = 1; i <= 3; i++) {
+                $('examDate' + i).value = authoritativeDates[i - 1];
+              }
             }
             data.exam_dates = [...authoritativeDates];
             render(data);
             $('examReportBadge').textContent = 'SAVED DEMO · BATCH #' + data.exam_batch_id;
             $('examReportBadge').classList.remove('bcp-exam__chip--warning');
             $('examGenerate').disabled = false;
-            $('examGenerate').innerHTML = '<i class="fa-solid fa-code-compare"></i> Regenerate Exam Preview';
-            $('examSave').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Confirm & Replace DEMO';
+            $('examGenerate').innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate ALL Programs';
+            $('examSave').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Send ALL to Academic Office';
             setStatus(`Loaded ACTIVE DEMO exam batch #${data.exam_batch_id}: ${data.returned_exams} saved exams. You may print it or generate a replacement preview; the current batch will remain unchanged until confirmation.`, 'success');
           } else {
-            $('examGenerate').disabled = !unifiedConfigured || examDatesDirty;
-            if (unifiedConfigured) setStatus(unifiedActiveBatchCount > 0 ? 'Unified dates are ready. Date-only changes preserve and revalidate existing saved assignments; regeneration is not required when the saved timetable remains valid on the new dates.' : 'Unified dates are ready. Generate the program preview when ready.', 'info');
+            $('examGenerate').disabled = pending;
+            if (unifiedConfigured) setStatus(unifiedActiveBatchCount > 0 ? 'Unified dates are ready. Date-only changes preserve and revalidate existing saved assignments; regeneration is not required when the saved timetable remains valid on the new dates.' : 'Unified dates are ready. Generate all programs when ready.', 'info');
           }
         } catch (e) {
           setStatus(e.message, 'error');
@@ -570,6 +604,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           upgradeSelects();
           await loadUnifiedPeriod();
           await loadSaved();
+          await showExamApprovalStatus();
         } catch (e) {
           setStatus(e.message, 'error');
         }
@@ -656,6 +691,7 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
         return paper;
       }
 
+      let redrawExamSections = null;
       function render(data) {
         $('examReport').hidden = false;
         $('reportTitle').textContent = `${data.program||$('examProgram').value} · Examination Timetable`;
@@ -699,77 +735,84 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           for (const group of ordered) target.append(printSection(group, group.rows, data.exam_dates));
         }
 
-        // Bind local filter events
-        $('examSearchInput').addEventListener('input', drawSections);
-        $('examTypeFilter').addEventListener('change', drawSections);
-
-        // Expand / Collapse functionality
-        $('examExpandAll').addEventListener('click', () => {
-          document.querySelectorAll('.bcp-exam__sheet-top').forEach(hdr => {
-            toggleAccordion(hdr, hdr.nextElementSibling, hdr.querySelector('.bcp-exam__sheet-icon'), true);
-          });
-        });
-        $('examCollapseAll').addEventListener('click', () => {
-          document.querySelectorAll('.bcp-exam__sheet-top').forEach(hdr => {
-            toggleAccordion(hdr, hdr.nextElementSibling, hdr.querySelector('.bcp-exam__sheet-icon'), false);
-          });
-        });
-
+        redrawExamSections = drawSections;
         drawSections(); // initial draw
         $('examPrint').disabled = false;
+      }
+
+      // One set of controls is shared by saved schedules and the inline draft.
+      $('examSearchInput').addEventListener('input', () => redrawExamSections?.());
+      $('examTypeFilter').addEventListener('change', () => redrawExamSections?.());
+      $('examExpandAll').addEventListener('click', () => {
+        document.querySelectorAll('.bcp-exam__sheet-top').forEach(hdr => {
+          toggleAccordion(hdr, hdr.nextElementSibling, hdr.querySelector('.bcp-exam__sheet-icon'), true);
+        });
+      });
+      $('examCollapseAll').addEventListener('click', () => {
+        document.querySelectorAll('.bcp-exam__sheet-top').forEach(hdr => {
+          toggleAccordion(hdr, hdr.nextElementSibling, hdr.querySelector('.bcp-exam__sheet-icon'), false);
+        });
+      });
+
+      async function showExamApprovalStatus() {
+        try {
+          const period = Number($('examPeriod').value);
+          if (!period) return;
+          const data = await api('exam-approval-status.php?period_id=' + encodeURIComponent(period), 'GET');
+          if (!data.request) return;
+          const r = data.request;
+          const note = r.remarks ? ' Academic Office remarks: ' + r.remarks : '';
+          if (r.status === 'PENDING_REVIEW') setStatus('Exam request #' + r.request_id + ' is awaiting Academic Office approval. No exam schedules saved yet.', 'info');
+          else if (r.status === 'REJECTED') setStatus('Exam request #' + r.request_id + ' was rejected. Generate again.' + note, 'error');
+          else if (r.status === 'APPROVED') setStatus('Exam request #' + r.request_id + ' was approved and saved.' + note, 'success');
+        } catch (e) { /* Keep exam generator usable if approval metadata is unavailable. */ }
       }
 
       $('examGenerate').addEventListener('click', async () => {
         if (pending) return;
         const dates = currentDates();
-        if (!unifiedConfigured) {
-          setStatus('Set the unified BCP examination dates before generating a program timetable.', 'error');
-          return;
-        }
-        if (examDatesDirty) {
-          setStatus('The date fields changed. Save the unified examination dates before generating.', 'error');
-          return;
-        }
         if (!datesValid(dates)) {
-          setStatus('Choose three different dates in ascending order.', 'error');
+          setStatus('Choose three valid exam dates within the academic period.', 'error');
           return;
+        }
+        if (unifiedActiveBatchCount > 0) {
+          setStatus('Existing ACTIVE exams were found. Back up and reset those exam schedules before generating a new school-wide timetable. Program selection is view-only.', 'error');
+          return;
+        }
+        if (!unifiedConfigured || examDatesDirty || dates.some((d,i) => d !== savedUnifiedDates[i])) {
+          const ok = await saveUnifiedPeriod();
+          if (!ok) return;
         }
         pending = true;
-        result = null;
-        $('examReport').hidden = true;
-        $('examPrint').disabled = true;
+        globalPreview = null;
+        $('examPreviewHelp').hidden = true;
         $('examSave').disabled = true;
         $('examGenerate').disabled = true;
-        setStatus('Python OR-Tools is checking three exam days, rooms, fixed section proctors, student conflicts, and same-subject paper rotation. Please wait…', 'loading');
-        const program = $('examProgram').value;
-        if (!program) {
-          setStatus('Choose a program.', 'error');
-          pending = false;
-          return;
-        }
+        $('examReport').hidden = true;
+        $('examPrint').disabled = true;
+        setStatus('Generating ALL active college programs and checking cross-program room and proctor conflicts. Nothing will be saved until you confirm.', 'loading');
         try {
-          const replacing = hasSaved;
-          const data = await api(replacing ? 'exam-replacement-preview.php' : 'exam-preview.php', 'POST', {
-            program,
-            period_id: Number($('examPeriod').value),
-            exam_dates: dates,
-            exam_window: $('examWindow').value,
-            ...(replacing ? {
-              replace_exam_batch_id: activeExamBatchId
-            } : {})
+          const data = await api('exam-global-preview.php','POST',{
+            period_id:Number($('examPeriod').value),
+            exam_dates:dates,
+            exam_window:$('examWindow').value
           });
-          if (data.status !== 'EXAM_PREVIEW_READY' || data.returned_exams !== data.required_exams || (data.issues || []).length || data.gap_audit?.passed !== true || !data.preview_token || (hasSaved && (!data.replacement_preview || Number(data.replace_exam_batch_id) !== activeExamBatchId))) throw Error('Generated preview is incomplete, failed the result audit or has a changed replacement baseline.');
-          result = data;
-          render(data);
-          $('examReportBadge').textContent = hasSaved ? 'UNSAVED REPLACEMENT PREVIEW' : 'UNSAVED DEMO PREVIEW';
-          $('examReportBadge').classList.add('bcp-exam__chip--warning');
+          if (data.status !== 'GLOBAL_EXAM_PREVIEW_READY' || !data.preview_token || data.required_exams !== data.returned_exams) {
+            throw Error('School-wide preview failed its completeness audit.');
+          }
+          globalPreview = data;
+          $('examSave').disabled = true;
+          $('examPreviewHelp').hidden = false;
+          await viewGeneratedPreview(true);
           $('examSave').disabled = false;
-          setStatus(`Zero-gap ${hasSaved?'replacement ':''}preview ready: ${data.returned_exams} / ${data.required_exams} exams; ${data.gap_audit.checked_student_groups} student groups checked. ${hasSaved?'The previous ACTIVE exam batch is unchanged. ':''}Review the proposed timetable before confirming.`, 'success');
-        } catch (e) {
-          setStatus(e.message, 'error');
+          setStatus(`School-wide preview ready: ${data.program_count} programs and ${data.returned_exams}/${data.required_exams} exams passed the checks. Previewing ${$('examProgram').value}; change Program to view other generated schedules, then send ALL to Academic Office. Nothing has been saved.`, 'success');
+        } catch(e) {
+          $('examSave').disabled = true;
+          $('examReport').hidden = true;
+          setStatus(e.message,'error');
         } finally {
           pending = false;
-          $('examGenerate').disabled = !unifiedConfigured || examDatesDirty;
+          $('examGenerate').disabled = false;
           applyDateLock();
         }
       });
@@ -778,12 +821,22 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
         if (!pending) {
           await loadUnifiedPeriod();
           await loadSaved();
+          await showExamApprovalStatus();
         }
       });
       $('examProgram').addEventListener('change', async () => {
         if (!pending) {
-          await loadUnifiedPeriod();
-          await loadSaved();
+          // Unified dates are shared across courses. Keep the administrator's
+          // date selections until they are explicitly saved or generated.
+          if (globalPreview) {
+            try {
+              await viewGeneratedPreview();
+              $('examSave').disabled = false;
+            } catch (e) {
+              $('examSave').disabled = true;
+              setStatus(e.message, 'error');
+            }
+          } else await loadSaved();
         }
       });
       $('examSetDates').addEventListener('click', saveUnifiedPeriod);
@@ -796,41 +849,47 @@ $dashboardDate = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
           $('examDate3').value = nextSchoolDay(d2);
         }
         examDatesDirty = true;
+        globalPreview = null;
+        $('examPreviewHelp').hidden = true;
+        $('examSave').disabled = true;
         invalidatePreview('Day 2 and Day 3 were auto-filled. Review the dates, then save the unified BCP examination period.');
       });
       for (const id of ['examDate2', 'examDate3']) {
         $(id).addEventListener('change', () => {
           if (pending) return;
           examDatesDirty = true;
+          globalPreview = null;
+            $('examPreviewHelp').hidden = true;
+          $('examSave').disabled = true;
           invalidatePreview('Unified examination dates changed. Save them before generating.');
         });
       }
       $('examWindow').addEventListener('change', () => {
-        if (!pending) invalidatePreview('Exam hours changed. Generate a fresh preview before saving.');
+        if (!pending) { globalPreview = null; $('examPreviewHelp').hidden = true; $('examSave').disabled = true; invalidatePreview('Exam hours changed. Generate a fresh preview before saving.'); }
       });
 
       $('examSave').addEventListener('click', async () => {
-        if (pending || !result?.preview_token) return;
-        const replacing = hasSaved;
-        if (replacing && (!result.replacement_preview || Number(result.replace_exam_batch_id) !== activeExamBatchId)) return;
-        if (!window.confirm(replacing ? `Replace ACTIVE exam batch #${activeExamBatchId} with this validated DEMO preview? The old batch will remain in the database as SUPERSEDED.` : 'Save this new DEMO examination timetable?')) return;
+        if (pending || !globalPreview?.preview_token) return;
+        if (!window.confirm(`Submit the complete preview for ${globalPreview.program_count} programs and ${globalPreview.returned_exams} exams to Academic Office? No exams are saved until approved.`)) return;
         pending = true;
         $('examSave').disabled = true;
         $('examGenerate').disabled = true;
-        setStatus('Rechecking current database facts and exam conflicts before saving…', 'loading');
+        setStatus('Sending school-wide exam preview to Academic Office for approval…','loading');
         try {
-          const saved = await api(replacing ? 'exam-replacement-save.php' : 'exam-save.php', 'POST', {
-            preview_token: result.preview_token
-          });
-          if (saved.status !== (replacing ? 'EXAM_REPLACED' : 'EXAM_SAVED')) throw Error('Exam save did not finish.');
+          const saved = await api('exam-global-submit.php','POST',{preview_token:globalPreview.preview_token});
+          if (saved.status !== 'PENDING_REVIEW') throw Error('Academic Office submission did not finish.');
+          globalPreview = null;
+            $('examPreviewHelp').hidden = true;
+          $('examReport').hidden = true;
           await loadUnifiedPeriod();
           await loadSaved();
+          setStatus(`Exam request #${saved.request_id} sent to Academic Office. Await approval before exam schedules become ACTIVE.`, 'success');
         } catch (e) {
           setStatus(e.message, 'error');
           $('examSave').disabled = false;
         } finally {
           pending = false;
-          $('examGenerate').disabled = !unifiedConfigured || examDatesDirty;
+          $('examGenerate').disabled = false;
           applyDateLock();
         }
       });

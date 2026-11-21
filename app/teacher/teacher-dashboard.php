@@ -54,7 +54,7 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/teacher-dashboard.css">
+    <link rel="stylesheet" href="../assets/css/teacher-dashboard.css?v=20261121-tooltips3">
 </head>
 <body class="tp-page">
 <header class="tp-topbar">
@@ -63,17 +63,28 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
         <span><strong>BCP</strong><small>Teacher Portal</small></span>
     </a>
     <nav class="tp-topnav" aria-label="Teacher portal shortcuts">
-        <button type="button" data-scroll="todaySection"><i class="fa-regular fa-calendar-check"></i><span>Today</span></button>
-        <button type="button" data-scroll="weeklySection"><i class="fa-solid fa-calendar-week"></i><span>Weekly</span></button>
-        <button type="button" id="tpPrint"><i class="fa-solid fa-print"></i><span>Print</span></button>
+        <button type="button" data-scroll="todaySection" class="tp-tip" data-tip="Today’s schedule · Shortcut: 1" aria-keyshortcuts="1"><i class="fa-regular fa-calendar-check"></i><span>Today</span></button>
+        <button type="button" data-scroll="weeklySection" class="tp-tip" data-tip="Weekly timetable · Shortcut: 2" aria-keyshortcuts="2"><i class="fa-solid fa-calendar-week"></i><span>Weekly</span></button>
+        <button type="button" id="tpPrint" class="tp-tip" data-tip="Print schedule · Shortcut: P" aria-keyshortcuts="P"><i class="fa-solid fa-print"></i><span>Print</span></button>
     </nav>
+    <div class="tp-export" id="tpExportWrap">
+        <button type="button" class="tp-export-trigger tp-tip" id="tpExport" data-tip="Export PDF or CSV · Shortcut: E" aria-keyshortcuts="E" aria-haspopup="true" aria-expanded="false" aria-controls="tpExportMenu">
+            <i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i><span>Export</span><i class="fa-solid fa-chevron-down tp-export-chevron" aria-hidden="true"></i>
+        </button>
+        <div class="tp-export-menu" id="tpExportMenu" hidden>
+            <p class="tp-export-eyebrow">FACULTY SCHEDULE</p>
+            <button type="button" id="tpExportPdf" title="Export PDF using Save as PDF"><i class="fa-regular fa-file-pdf" aria-hidden="true"></i><span><strong>Export as PDF</strong><small>Official print-ready schedule</small></span></button>
+            <button type="button" id="tpExportCsv" title="Download weekly schedule as CSV"><i class="fa-solid fa-file-csv" aria-hidden="true"></i><span><strong>Export as CSV</strong><small>Weekly classes · spreadsheet ready</small></span></button>
+            <p class="tp-export-footnote">Select Save as PDF in the print window.</p>
+        </div>
+    </div>
     <div class="tp-account">
         <span class="tp-role">TEACHER</span>
-        <a class="tp-password-link" href="./teacher-change-password.php" title="Change password"><i class="fa-solid fa-key"></i><span>Password</span></a>
+        <a class="tp-password-link tp-tip" href="./teacher-change-password.php" data-tip="Change account password"><i class="fa-solid fa-key"></i><span>Password</span></a>
         <span class="tp-avatar" aria-label="Logged in as <?= tpEsc($teacherName) ?>"><?= tpEsc($initial) ?></span>
         <form method="POST" action="./teacher-logout.php">
             <input type="hidden" name="csrf_token" value="<?= tpEsc(function_exists('authCsrf') ? authCsrf() : '') ?>">
-            <button type="submit" class="tp-logout" title="Logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></button>
+            <button type="submit" class="tp-logout tp-tip tp-tip-end" data-tip="Sign out of Teacher Portal"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></button>
         </form>
     </div>
 </header>
@@ -185,7 +196,7 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
     <footer class="tp-footer">
         <span><i class="fa-solid fa-lock"></i> Read-only teacher portal</span>
         <span>Schedule data comes from ACTIVE saved timetable records.</span>
-        <span>Keyboard: <kbd>R</kbd> refresh · <kbd>P</kbd> print · <kbd>1</kbd> today · <kbd>2</kbd> weekly</span>
+        <span>Keyboard: <kbd>E</kbd> export · <kbd>R</kbd> refresh · <kbd>P</kbd> print · <kbd>1</kbd> today · <kbd>2</kbd> weekly</span>
     </footer>
 </main>
 
@@ -372,13 +383,61 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
             busy = false; $('tpMain').setAttribute('aria-busy','false');$('tpPeriod').disabled = false;
         }
     }
-    $('tpPeriod').addEventListener('change', () => load($('tpPeriod').value));$('tpPrint').addEventListener('click', () => window.print());
+    function closeExport() {
+        $('tpExportMenu').hidden = true;
+        $('tpExport').setAttribute('aria-expanded','false');
+    }
+    function toggleExport() {
+        const willOpen = $('tpExportMenu').hidden;
+        $('tpExportMenu').hidden = !willOpen;
+        $('tpExport').setAttribute('aria-expanded', String(willOpen));
+    }
+    function printSchedule() {
+        closeExport();
+        if (!data || busy) { setStatus('Load a schedule before exporting a PDF.', 'error'); return; }
+        window.print(); // Browser print dialog provides Save as PDF (no server upload).
+    }
+    function csvCell(value) {
+        // Prevent spreadsheet formula injection on opening CSVs.
+        let valueText = String(value ?? '');
+        if (/^[\s]*[=+@\-\t\r]/.test(valueText)) valueText = "'" + valueText;
+        return '"' + valueText.replace(/"/g, '""') + '"';
+    }
+    function exportCsv() {
+        closeExport();
+        if (!data || busy) { setStatus('Load a schedule before exporting CSV.', 'error'); return; }
+        const header = ['Academic Year','Semester','Employee Number','Teacher','Program','Day','Start Time','End Time','Subject Code','Subject Title','Section','Year Level','Room','Building','Delivery Mode'];
+        const rows = (data.weekly_schedule || []).map(m => [
+            data.period.academic_year, data.period.semester, data.teacher.employee_no,
+            data.teacher.teacher_name, data.teacher.program_code, m.day_of_week,
+            m.start_time, m.end_time, m.subject_code, m.subject_title,
+            m.section_code, m.year_level, m.room_name || '', m.building || '', m.delivery_mode
+        ]);
+        const contents = '\uFEFF' + [header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+        const blob = new Blob([contents], {type:'text/csv;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const safe = v => String(v ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,65);
+        link.href = url;
+        link.download = `BCP_Faculty_Schedule_${safe(data.teacher.employee_no)}_${safe(data.period.academic_year)}_S${safe(data.period.semester)}.csv`;
+        document.body.appendChild(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setStatus(`CSV exported: ${rows.length} weekly class meeting(s).`, 'success');
+    }
+    $('tpPeriod').addEventListener('change', () => {closeExport(); load($('tpPeriod').value);});
+    $('tpPrint').addEventListener('click', printSchedule);
+    $('tpExport').addEventListener('click', toggleExport);
+    $('tpExportPdf').addEventListener('click', printSchedule);
+    $('tpExportCsv').addEventListener('click', exportCsv);
+    document.addEventListener('click', event => { if (!$('tpExportWrap').contains(event.target)) closeExport(); });
     document.querySelectorAll('[data-scroll]').forEach(btn => btn.addEventListener('click', () => $(btn.dataset.scroll)?.scrollIntoView({behavior:'smooth',block:'start'})));
     document.addEventListener('keydown', event => {
-        if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) || event.ctrlKey || event.altKey || event.metaKey) return;
+        if (event.key === 'Escape') { closeExport(); return; }
+        if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
         const key = event.key.toLowerCase();
         if (key === 'r') { event.preventDefault(); load($('tpPeriod').value); }
-        if (key === 'p') { event.preventDefault(); window.print(); }
+        if (key === 'p') { event.preventDefault(); printSchedule(); }
+        if (key === 'e') { event.preventDefault(); toggleExport(); }
         if (key === '1') { event.preventDefault(); $('todaySection').scrollIntoView({behavior:'smooth'}); }
         if (key === '2') { event.preventDefault(); $('weeklySection').scrollIntoView({behavior:'smooth'}); }
     });

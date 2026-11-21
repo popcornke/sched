@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/shared/auth.php';
-authRequire(false,['ACADEMIC_OFFICE']);
+// The account page must remain accessible when the 30-day password policy
+// requires a password change. Other Academic Office routes stay protected.
+$isAccountSettingsPage = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
+    === realpath(__DIR__ . '/account.php');
+authRequire(false, ['ACADEMIC_OFFICE'], $isAccountSettingsPage);
 require_once __DIR__.'/shared-functions.php';
 function acadLayout(string $title):void {
  $name=acadH($_SESSION['auth_username']??'Academic Office');$csrf=acadH(authCsrf());$page=basename($_SERVER['SCRIPT_NAME']??'');

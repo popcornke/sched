@@ -573,7 +573,7 @@ function authAdminPasswordState(
  * Central access gate.
  *
  * $allowExpiredAdminPassword must ONLY be true for:
- * - the Admin Account Settings page
+ * - the Admin/Academic Office Account Settings page
  * - its API
  *
  * This lets an expired admin change the password while every

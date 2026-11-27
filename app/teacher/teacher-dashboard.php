@@ -54,7 +54,7 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/teacher-dashboard.css?v=20261121-tooltips3">
+    <link rel="stylesheet" href="../assets/css/teacher-dashboard.css?v=20261127-printmatrix1">
 </head>
 <body class="tp-page">
 <header class="tp-topbar">
@@ -101,21 +101,7 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
                 <p id="tpPrintPeriod">Loading period...</p>
             </div>
         </div>
-        <table class="tp-print-table">
-            <thead>
-                <tr>
-                    <th>DAY</th>
-                    <th>TIME</th>
-                    <th>SUBJECT CODE</th>
-                    <th>SECTION</th>
-                    <th>ROOM</th>
-                    <th>MODE</th>
-                </tr>
-            </thead>
-            <tbody id="tpPrintTableBody">
-                <!-- Javascript will populate this -->
-            </tbody>
-        </table>
+        <div id="tpPrintTimetables"></div>
         <div class="tp-print-signatures">
             <div>
                 <p>Prepared by:</p>
@@ -314,33 +300,53 @@ if (count($nameParts) >= 2) {$initial = strtoupper(substr($nameParts[0], 0, 1) .
         $('tpPrintPeriod').textContent = `${data.period.academic_year} · Semester ${data.period.semester}`;
         $('tpPrintSignName').textContent = t.teacher_name; 
         
-        // --- BUILD PRINT TABLE ---
-        const tbody = $('tpPrintTableBody');
-        tbody.replaceChildren();
-        days.forEach(day => {
-            const rows = data.weekly_schedule.filter(m => m.day_of_week === day);
-            rows.forEach(m => {
-                const tr = node('tr');
-                tr.append(
-                    node('td', day),
-                    node('td', `${fmtTime(m.start_time)} – ${fmtTime(m.end_time)}`),
-                    node('td', m.subject_code),
-                    node('td', m.section_code),
-                    node('td', m.room_name || 'TBA'),
-                    node('td', m.delivery_mode)
-                );
+        // Match the Staff direct-range matrix: days vertically, actual time ranges horizontally.
+        const root = $('tpPrintTimetables');
+        root.replaceChildren();
+        const minutes = value => {
+            const [h, m] = String(value ?? '').split(':').map(Number);
+            return h * 60 + m;
+        };
+        const meetings = data.weekly_schedule.filter(m => days.includes(m.day_of_week) && minutes(m.end_time) > minutes(m.start_time));
+        const rangeMap = new Map();
+        meetings.forEach(m => {
+            const start = minutes(m.start_time), end = minutes(m.end_time);
+            rangeMap.set(`${start}-${end}`, {start, end, label: `${fmtTime(m.start_time)} – ${fmtTime(m.end_time)}`});
+        });
+        const ranges = [...rangeMap.values()].sort((a,b) => a.start-b.start || a.end-b.end);
+        if (!ranges.length) root.append(node('p', 'No schedule available for this period.'));
+        // Limit columns per matrix to keep dense schedules readable on A4 landscape.
+        for (let offset = 0; offset < ranges.length; offset += 8) {
+            const group = ranges.slice(offset, offset + 8);
+            const table = node('table', undefined, 'tp-print-table');
+            table.setAttribute('aria-label', 'Weekly faculty timetable');
+            const cols = node('colgroup');
+            cols.append(node('col', undefined, 'tp-print-day-width'));
+            group.forEach(() => cols.append(node('col')));
+            table.append(cols);
+            const thead = node('thead'), head = node('tr');
+            const dayHeading = node('th', 'DAY / TIME'); dayHeading.scope = 'col'; head.append(dayHeading);
+            group.forEach(range => { const th = node('th', range.label); th.scope = 'col'; head.append(th); });
+            thead.append(head); table.append(thead);
+            const tbody = node('tbody');
+            days.forEach(day => {
+                const tr = node('tr'), label = node('th', day); label.scope = 'row'; tr.append(label);
+                group.forEach(range => {
+                    const rows = meetings.filter(m => m.day_of_week === day && minutes(m.start_time) === range.start && minutes(m.end_time) === range.end);
+                    const td = node('td', undefined, rows.length ? 'tp-print-meeting' : 'tp-print-empty');
+                    if (!rows.length) td.textContent = '—';
+                    rows.forEach(m => {
+                        const block = node('div', undefined, 'tp-print-class');
+                        block.append(node('strong', m.subject_code), node('span', `Section ${m.section_code}`), node('span', m.delivery_mode === 'ONLINE' ? 'ONLINE · No room' : `${m.room_name || 'Room TBA'} · ${m.delivery_mode}`));
+                        td.append(block);
+                    });
+                    tr.append(td);
+                });
                 tbody.append(tr);
             });
-        });
-        if (!data.weekly_schedule.length) {
-            const tr = node('tr');
-            const td = node('td', 'No schedule available for this period.');
-            td.colSpan = 6;
-            td.style.textAlign = 'center';
-            tr.append(td);
-            tbody.append(tr);
+            table.append(tbody); root.append(table);
         }
-        
+
         // --- REGULAR UI DATA ---
         $('tpGreeting').innerHTML = `Welcome, ${esc(t.teacher_name.split(' ')[0])}<span>.</span>`;
         $('tpIdentity').textContent = `${t.teacher_name} · ${t.employee_no} · ${t.program_code} — ${t.program_name}`;

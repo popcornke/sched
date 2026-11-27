@@ -26,6 +26,18 @@ $sectionMap=acadLookup($db,'sections','section_id',$sectionIds,'section_id,secti
 $subjectMap=acadLookup($db,'subjects','subject_id',$subjectIds,'subject_id,subject_code,subject_title');
 $teacherMap=acadLookup($db,'teachers','teacher_id',$teacherIds,'teacher_id,teacher_name');
 $roomMap=acadLookup($db,'rooms','room_id',$roomIds,'room_id,room_name');
+if (($_GET['export']??'')==='csv') {
+ require_once dirname(__DIR__).'/shared/audit.php';
+ auditLog($db,'CLASS_REQUEST_EXPORTED','CLASS_APPROVAL','CLASS_REQUEST',(string)$id,'Academic Office exported class history as CSV.');
+ require_once __DIR__.'/csv-export.php';
+ $out=acadCsvStart('class-schedule-request-'.$id.'.csv');
+ acadCsvRow($out,['Request ID','Status','Academic Year','Semester','Program','Section','Year Level','Subject Code','Subject Title','Day','Start Time','End Time','Room','Mode','Teacher']);
+ foreach($meetings as $m){if(!is_array($m))continue;
+  $sec=$sectionMap[(int)($m['section_id']??0)]??[];$sub=$subjectMap[(int)($m['subject_id']??0)]??[];
+  acadCsvRow($out,[$id,$r['status'],$r['academic_year'],$r['semester'],$r['program_code'],$sec['section_code']??($m['section_id']??''),$sec['year_level']??'',$sub['subject_code']??($m['subject_id']??''),$sub['subject_title']??'',$m['day_of_week']??'',$m['start_time']??'',$m['end_time']??'',$roomMap[(int)($m['room_id']??0)]['room_name']??'',$m['delivery_mode']??'',$teacherMap[(int)($m['teacher_id']??0)]['teacher_name']??'']);
+ }
+ fclose($out);exit;
+}
 $groups=[];
 foreach($meetings as $m){
  $sid=(int)($m['section_id']??0);$s=$sectionMap[$sid]??[];$code=(string)($s['section_code']??$sid);

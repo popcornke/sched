@@ -8,6 +8,23 @@ try {
 } catch(Throwable $e){http_response_code(503);acadLayout('Exam Approvals');echo '<h1>Exam approval setup needed</h1><p>Import database/migrations/029_academic_exam_approval.sql into bcp_scheduling.</p>';acadEnd();exit;}
 if ($id && !$historyEmbed && (string)$item['status'] !== 'PENDING_REVIEW') { header('Location: history.php?type=exam', true, 303); exit; }
 if ($id) { require_once dirname(__DIR__) . '/shared/audit.php'; auditLog($db,'EXAM_REQUEST_VIEWED','EXAM_APPROVAL','EXAM_REQUEST',(string)$id,'Academic Office viewed exam request.'); }
+if (($_GET['export']??'')==='csv') {
+ if (!$id || !$historyEmbed || !in_array((string)$item['status'],['APPROVED','REJECTED'],true) || !empty($item['deleted_at'])) {http_response_code(403);exit('History entry not available');}
+ $preview=json_decode((string)$item['payload_json'],true);
+ if (!is_array($preview) || !is_array($preview['programs']??null)) {http_response_code(422);exit('Invalid exam schedule data');}
+ $subjects=[];foreach($db->query('SELECT ss.section_subject_id,sec.section_code,sec.year_level,sub.subject_code,sub.subject_title FROM section_subjects ss JOIN sections sec ON sec.section_id=ss.section_id JOIN subjects sub ON sub.subject_id=ss.subject_id') as $row)$subjects[(int)$row['section_subject_id']]=$row;
+ $rooms=$db->query('SELECT room_id,room_name FROM rooms')->fetchAll(PDO::FETCH_KEY_PAIR);
+ $teachers=$db->query('SELECT teacher_id,teacher_name FROM teachers')->fetchAll(PDO::FETCH_KEY_PAIR);
+ auditLog($db,'EXAM_REQUEST_EXPORTED','EXAM_APPROVAL','EXAM_REQUEST',(string)$id,'Academic Office exported exam history as CSV.');
+ require_once __DIR__.'/csv-export.php';
+ $out=acadCsvStart('exam-schedule-request-'.$id.'.csv');
+ acadCsvRow($out,['Request ID','Status','Academic Year','Semester','Program','Year Level','Section','Exam Day','Exam Date','Start Time','End Time','Room','Subject Code','Subject Title','Proctor']);
+ foreach($preview['programs'] as $code=>$program)foreach(($program['result']['assignments']??[]) as $a){
+  $sub=$subjects[(int)($a['section_subject_id']??0)]??[];$day=(int)($a['exam_day']??0);
+  acadCsvRow($out,[$id,$item['status'],$item['academic_year'],$item['semester'],$code,$sub['year_level']??'',$sub['section_code']??($a['section_id']??''),$day,$preview['dates'][$day-1]??'', $a['start_time']??'', $a['end_time']??'', $rooms[(int)($a['room_id']??0)]??'Unknown room',$sub['subject_code']??'Unknown',$sub['subject_title']??'', $teachers[(int)($a['proctor_id']??0)]??'Unknown proctor']);
+ }
+ fclose($out);exit;
+}
 if ($historyEmbed && $id) {
     if (!in_array((string)$item['status'], ['APPROVED','REJECTED'], true)) {
         http_response_code(403);exit('This exam request is not in approval history.');

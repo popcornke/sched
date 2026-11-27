@@ -8,4 +8,10 @@
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)close();});
  print.addEventListener('click',()=>{try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){window.aoNotice?.('Printing unavailable', 'Unable to open print preview. Use View to open the document in a separate tab.');}});
  const url=new URL(location.href),id=url.searchParams.get('open');if(id&&/^\d+$/.test(id))open(id);
+ document.getElementById('officePrintDocumentCsv')?.addEventListener('click',()=>{
+  if(modal.hidden || !frame.getAttribute('src'))return;
+  const url=new URL(frame.getAttribute('src'),location.href);
+  url.searchParams.set('export','csv');
+  const link=document.createElement('a');link.href=url.href;link.download='';document.body.appendChild(link);link.click();link.remove();
+ });
 })();

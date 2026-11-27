@@ -388,7 +388,7 @@ kbd { font: inherit; font-size: 11px; border: 1px solid #cbd5e1; background: #f8
 .tp-print-only { display: none; } /* Nakatago sa screen */
 
 @media print {
-    @page { size: portrait; margin: 0.75in; }
+    @page { size: A4 landscape; margin: 9mm; }
     body.tp-page { background: #fff; font-size: 11pt; color: #000; }
     
     /* Itago ang LAHAT ng web UI */
@@ -518,3 +518,21 @@ kbd { font: inherit; font-size: 11px; border: 1px solid #cbd5e1; background: #f8
 .tp-topbar .tp-tip-end::after { left: auto; right: 0; transform: translate(0,-4px); }
 .tp-topbar .tp-tip-end:hover::after, .tp-topbar .tp-tip-end:focus-visible::after { transform: translate(0,0); }
 @media(max-width:480px) { .tp-topbar .tp-tip::after { white-space: normal; min-width: 130px; text-align:center; } }
+
+/* Staff-style faculty print timetable (PDF and Print only). */
+@media print {
+    .tp-print-header { margin-bottom: 14px; padding-bottom: 12px; }
+    .tp-print-header img { width: 65px; height: 65px; object-fit: contain; }
+    .tp-print-table { table-layout: fixed; width: 100%; margin: 0 0 14px; break-inside: avoid; page-break-inside: avoid; }
+    .tp-print-day-width { width: 88px; }
+    .tp-print-table th, .tp-print-table td { border: 1px solid #111; padding: 5px 4px; font-size: 8.5pt; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+    .tp-print-table thead th { font-size: 8pt; line-height: 1.25; }
+    .tp-print-table tbody th { text-align: left; }
+    .tp-print-table tbody tr { height: 42px; }
+    .tp-print-table .tp-print-empty { color: #777; }
+    .tp-print-class { display: grid; gap: 2px; line-height: 1.2; }
+    .tp-print-class + .tp-print-class { border-top: 1px solid #bbb; margin-top: 4px; padding-top: 4px; }
+    .tp-print-class strong { font-size: 9pt; }
+    .tp-print-signatures { margin-top: 24px; }
+    .tp-print-signatures p { margin-bottom: 24px; }
+}

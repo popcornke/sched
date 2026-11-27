@@ -41,4 +41,10 @@
     try { frame.contentWindow.focus(); frame.contentWindow.print(); }
     catch (err) { window.aoNotice?.('Printing unavailable', 'Unable to open print preview. Please try again.'); }
   });
+ document.getElementById('officePrintExamHistoryCsv')?.addEventListener('click',()=>{
+  if(modal.hidden || !frame.getAttribute('src'))return;
+  const url=new URL(frame.getAttribute('src'),location.href);
+  url.searchParams.set('export','csv');
+  const link=document.createElement('a');link.href=url.href;link.download='';document.body.appendChild(link);link.click();link.remove();
+ });
 })();
